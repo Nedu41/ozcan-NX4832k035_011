@@ -1,6 +1,6 @@
 # ozcan-NX4832k035_011 — devir notu
 
-Nextion **NX4832K035_011** (3,5" 480x320 seri HMI) ile, `D:\Kodlar\ozcan-crow-panel-7inc` (CrowPanel 7" HUB) projesinin aynı işlevlerini yapan ikinci cihaz. Kullanıcı Türkçe konuşur, kısa cevap ister, kanıtsız deneme önerme. Cihaz Özcan abiye verilecek (kendi WiFi'sine kodsuz bağlanabilmeli; gizli bilgiler teslimden önce silinir) — kurallar CrowPanel projesinin CLAUDE.md'sindeki "Teslim gereksinimi" ile aynı.
+Nextion **NX4832K035_011** (3,5" 480x320 seri HMI) ile, `C:\Kodlar\ozcan-crow-panel-7inc` (CrowPanel 7" HUB) projesinin aynı işlevlerini yapan ikinci cihaz. Kullanıcı Türkçe konuşur, kısa cevap ister, kanıtsız deneme önerme. Cihaz Özcan abiye verilecek (kendi WiFi'sine kodsuz bağlanabilmeli; gizli bilgiler teslimden önce silinir) — kurallar CrowPanel projesinin CLAUDE.md'sindeki "Teslim gereksinimi" ile aynı.
 
 ## Çalışma kuralları
 - Önce kanıt/ölçüm, sonra kod. `docs/DONANIM.md`'de yalnızca fotoğraftan/ölçümden teyit edilen bilgi durur.
