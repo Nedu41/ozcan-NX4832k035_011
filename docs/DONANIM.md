@@ -27,3 +27,9 @@ Kaynak: `NX4832k035_011.jpeg` (kartın arka yüzü fotoğrafı, 2026-10-12). Kar
 ## Teyit bekleyen
 - Kablonun renk sırası
 - Ekranın yatay/dikey kullanımı
+
+## OTA ve flash sınırı (ESP-01, 1 MB)
+- Bölümleme: `eagle.flash.1m.ld` (dosya sistemi yok; ayarlar EEPROM'da, adres `0xFB000`). OTA'da yeni imaj, çalışan imajın yanındaki boş alana sığmalı: kalıcı sınır yaklaşık **500 KB** imaj.
+- 1m64 bölümlemesinde sınır ~476 KB'tı ve aşılınca OTA "Not Enough Space" verdi (2026-10-16). ArduinoJson çıkarıldı (küçük JSON elle okunuyor), WiFiManager çıkarıldı (kendi kurulum portalı).
+- Ayarlar (EEPROM): şehir (0..43), kayma hızı/renk/animasyon (48..55), g1 arka plan (56..59), karakter kümesi (60), sayfa rengi (61..63).
+- İmaj şu an 467,6 KB.

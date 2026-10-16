@@ -20,9 +20,10 @@ main{max-width:560px;margin:16px auto;padding:0 16px}
 <button class=sekme-btn data-t=ekran>Ekran</button><button class=sekme-btn data-t=wifi>WiFi</button><button class=sekme-btn data-t=dosya>Ekran tasarimi</button></div>
 <main>
 <div class=card id=c_ekran><h3>Ekran</h3>
-<div class=satir style="margin-top:12px"><input id=dt maxlength=100 placeholder="kayar yazi (g1, en cok 100 karakter)" style="flex:1;padding:10px;border-radius:8px;font-size:15px"><button class="btn btn-mavi" onclick="yaz()">Gonder</button></div>
+<div class=satir style="margin-top:12px"><input id=dt maxlength=300 placeholder="kayar yazi (g1, en cok 300 karakter)" style="flex:1;padding:10px;border-radius:8px;font-size:15px"><button class="btn btn-mavi" onclick="yaz()">Gonder</button></div>
 <div id=pal style="margin-top:10px"></div>
 <div id=arkapal style="margin-top:10px"></div>
+<div id=syfpal style="margin-top:10px"></div>
 <div class=satir style="margin-top:10px"><span class=etiket>Karakter</span><select id=kk style="flex:1;padding:10px"><option value=0>ASCII (Turkce harfler sadelesir)<option value=1>ISO-8859-9 (Turkce font)<option value=2>UTF-8</select></div>
 <div class=satir style="margin-top:10px"><span class=etiket>Animasyon</span><select id=an style="flex:1;padding:10px"><option value=0>Sabit<option value=1>Yanip sonen<option value=2>Gokkusagi<option value=3>Nefes</select></div>
 <div class=satir style="margin-top:10px"><span class=etiket>Kayma hizi</span><input id=hz type=range min=1 max=10 value=3 style="flex:1"><b id=hzv>3</b></div>
@@ -61,7 +62,7 @@ $('tg').onclick=()=>{
 };
 function g(d){dm.textContent=d.durum;nx.textContent=d.nx;wifi.textContent=d.ssid+' ('+d.ip+')';srm.textContent=d.surum+' • Son güncelleme: '+d.tarih;
 vs.textContent=d.saat;vh.textContent=d.sehir+' '+d.hava+' °C';vd.textContent=d.havad;vn.textContent=d.haber||'-';vb.textContent=d.haberd+' (bellek '+d.heap+')';
-if(document.activeElement!==hz){hz.value=d.hiz;hzv.textContent=d.hiz}renk=d.renk;mark();arka=d.arka;arkam=d.arkam;markA();if(document.activeElement!==an)an.value=d.anim;if(document.activeElement!==kk)kk.value=d.tr;
+if(document.activeElement!==hz){hz.value=d.hiz;hzv.textContent=d.hiz}renk=d.renk;mark();arka=d.arka;arkam=d.arkam;markA();syf=d.sayfa;markS();document.getElementById('uy').checked=d.uydur==1;if(document.activeElement!==an)an.value=d.anim;if(document.activeElement!==kk)kk.value=d.tr;
 ws.textContent=d.ssid||'-';wi.textContent=d.ip;wr.textContent=d.rssi+' dBm'}
 function f(u){fetch(u).then(r=>r.json()).then(g).catch(()=>nx.textContent='baglanti yok')}
 function sehir(){f('/api/sehir?ad='+encodeURIComponent(sh.value))}
@@ -78,6 +79,13 @@ let arka=0,arkam=0;
 {const r=document.createElement('div');r.className='pg';r.innerHTML='<small>Arka</small>';
  ARKA.forEach(x=>{const b=document.createElement('button');b.className='sw sa';b.style.background=x;b.dataset.v=h565(x);b.onclick=()=>{arka=+b.dataset.v;arkam=0;markA();f('/api/arka?r='+arka)};r.appendChild(b)});
  const s=document.createElement('button');s.className='btn btn-mavi';s.id='asayfa';s.textContent='Sayfa rengi';s.onclick=()=>{arkam=1;markA();f('/api/arka?s=1')};r.appendChild(s);arkapal.appendChild(r)}
+const SYF=['#000000','#14141A','#1F1F28','#2C2C38','#800000','#4B0F0F','#0F2F4B','#0F4B2B','#3A1F5C'];
+let syf=-1;
+{const r=document.createElement('div');r.className='pg';r.innerHTML='<small>Sayfa</small>';
+ SYF.forEach(x=>{const b=document.createElement('button');b.className='sw ss';b.style.background=x;b.dataset.v=h565(x);b.onclick=()=>{syf=+b.dataset.v;markS();f('/api/sayfa?r='+syf)};r.appendChild(b)});
+ const l=document.createElement('label');l.style.cssText='font-size:13px;color:#9ca3af;display:flex;gap:6px;align-items:center';l.innerHTML='<input type=checkbox id=uy> kutular da uysun';r.appendChild(l);syfpal.appendChild(r);
+ document.getElementById('uy').onchange=e=>f('/api/sayfa?u='+(e.target.checked?1:0))}
+function markS(){document.querySelectorAll('.ss').forEach(b=>b.classList.toggle('on',+b.dataset.v==syf))}
 function markA(){document.querySelectorAll('.sa').forEach(b=>b.classList.toggle('on',arkam==0&&+b.dataset.v==arka));asayfa.classList.toggle('btn-on',arkam==1);asayfa.classList.add('sabit')}
 function mark(){document.querySelectorAll('.sw').forEach(b=>b.classList.toggle('on',+b.dataset.v==renk))}
 hz.oninput=()=>hzv.textContent=hz.value;hz.onchange=()=>f('/api/hiz?v='+hz.value);

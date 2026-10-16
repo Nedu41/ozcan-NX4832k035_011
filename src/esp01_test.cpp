@@ -155,6 +155,12 @@ static void wifiGoster() {
   String hata = "tamam";
   auto k = [&](const String& r) { if (hata == "tamam" && r != "tamam") hata = r; };
   nxCmd("");  // boş komut: açılışta UART0'a düşen boot çöpünü ekranın ayrıştırıcısından temizler
+  if (sayfaVar && (zorla || sayfaYeni)) {  // sayfa rengi önce: "ref 0" tüm bileşenleri yeniden çizer, değerleri sonra yazılır
+    k(nxCmd("page0.bco=" + String(sayfaRenk)));
+    if (sayfaUydur) { k(nxCmd("t_durum.bco=" + String(sayfaRenk))); k(nxCmd("g0.bco=" + String(sayfaRenk))); }
+    k(nxCmd("ref 0"));
+    sayfaYeni = false;
+  }
   k(nxCmd(String("b_led.bco=") + (d ? C_YESIL : C_KIRMIZI)));
   k(nxCmd(String("b_led.pco=") + C_KOYU));
   k(nxCmd(d ? "b_led.txt=\"WiFi\"" : "b_led.txt=\"YOK\""));
@@ -192,7 +198,7 @@ static void apiDurum() {
              ",\"saat\":\"" + (saatHazir() ? saatStr() : String("-")) + "\",\"sehir\":\"" + jesc(sehirAd) +
              "\",\"hava\":\"" + (havaVar ? String(havaC, 1) : String("-")) + "\",\"havad\":\"" + jesc(havaDurum) +
              "\",\"haber\":\"" + jesc(haberMetin.substring(0, 90)) + "\",\"haberd\":\"" + jesc(haberDurum) +
-             "\",\"tr\":" + trMod + ",\"arka\":" + arkaRenk + ",\"arkam\":" + arkaMod + ",\"anim\":" + animMod + ",\"hiz\":" + kaymaHiz + ",\"renk\":" + yaziRenk + ",\"mesaj\":\"" + jesc(mesaj) + "\",\"heap\":" + ESP.getFreeHeap() + "}";
+             "\",\"sayfa\":" + (sayfaVar ? (int)sayfaRenk : -1) + ",\"uydur\":" + sayfaUydur + ",\"tr\":" + trMod + ",\"arka\":" + arkaRenk + ",\"arkam\":" + arkaMod + ",\"anim\":" + animMod + ",\"hiz\":" + kaymaHiz + ",\"renk\":" + yaziRenk + ",\"mesaj\":\"" + jesc(mesaj) + "\",\"heap\":" + ESP.getFreeHeap() + "}";
   web.send(200, "application/json", j);
 }
 
@@ -267,10 +273,17 @@ void setup() {
   web.on("/", [] { web.send_P(200, "text/html", ANA_HTML); });
   web.on("/pano.css", [] { web.send_P(200, "text/css", PANO_CSS); });
   web.on("/api/durum", [] { apiDurum(); });
-  web.on("/api/mesaj", [] {  // g1 kayar yazı: t = metin (100 karaktere kadar), r = RGB565 renk
+  web.on("/api/mesaj", [] {  // g1 kayar yazı: t = metin (300 bayta kadar), r = RGB565 renk
     if (web.hasArg("r")) { yaziRenk = web.arg("r").toInt(); ayarKaydet(); }
-    if (web.hasArg("t")) { mesaj = utf8Kes(temizMetin(web.arg("t")), 100); }
+    if (web.hasArg("t")) { mesaj = utf8Kes(temizMetin(web.arg("t")), 300); }
     ayarYeni = true;
+    apiDurum();
+  });
+  web.on("/api/sayfa", [] {  // sayfa arka plan rengi: r = RGB565, u = 1: t_durum/g0 kutuları da uysun
+    if (web.arg("x") == "1") { sayfaVar = false; sayfaUydur = false; ayarKaydet(); apiDurum(); return; }  // ayarı sil: tasarımdaki renk (tft yenilenince)
+    if (web.hasArg("r")) { sayfaRenk = web.arg("r").toInt(); sayfaVar = true; }
+    if (web.hasArg("u")) sayfaUydur = web.arg("u") == "1";
+    if (web.hasArg("r") || web.hasArg("u")) { ayarKaydet(); sayfaYeni = true; ayarYeni = true; }  // ayarYeni: g1 "sayfa rengi" modu yeni rengi okusun
     apiDurum();
   });
   web.on("/api/tr", [] {  // karakter kümesi: 0 ASCII, 1 ISO-8859-9, 2 UTF-8; metinler yeniden yazılır
@@ -378,5 +391,5 @@ void loop() {
     time_t t = time(nullptr);
     if (localtime(&t)->tm_min != sonDk) saatYaz();
   }
-  if (millis() >= ledAt && (d != ledSon || millis() - ledZ > 30000 || haberYeni || ayarYeni)) wifiGoster();
+  if (millis() >= ledAt && (d != ledSon || millis() - ledZ > 30000 || haberYeni || ayarYeni || sayfaYeni)) wifiGoster();
 }

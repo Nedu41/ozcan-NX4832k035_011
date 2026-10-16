@@ -1,7 +1,6 @@
 // Saat (NTP), hava (Open-Meteo, düz HTTP) ve haber (RSS, HTTPS) verisi. Ekrana yazmayı esp01_test.cpp yapar.
 #pragma once
 #include <Arduino.h>
-#include <ArduinoJson.h>
 #include <EEPROM.h>
 #include <ESP8266HTTPClient.h>
 #include <ESP8266WiFi.h>
@@ -9,7 +8,7 @@
 #include <time.h>
 
 constexpr const char* NEWS_URL = "https://www.aa.com.tr/tr/rss/default?cat=dunya";  // CrowPanel ile aynı kaynak
-constexpr size_t HABER_MAX = 100;  // g0.txt_maxl (Editor'de 100); aşan başlık kesilir
+constexpr size_t HABER_MAX = 300;  // g0.txt_maxl'dan küçük olmalı (şimdi Editor'de 1000); aşan başlık kesilir
 constexpr uint8_t HABER_BASLIK = 6;  // RSS'ten alınacak başlık sayısı; ekranda sırayla gösterilir
 constexpr uint32_t KAYMA_GENISLIK = 442, KAYMA_PX_KARAKTER = 11, KAYMA_TIM = 80;  // g0 genişliği 442 px; tim en az 80 ms kabul edilir (altı 1C hatası), hız adım uzunluğuyla (dis = hız*2 px) ayarlanır
 
@@ -26,6 +25,10 @@ static uint8_t kaymaHiz = 3;          // 1..10 (g0/g1.dis = hız*2 px); web'den 
 static uint16_t yaziRenk = 57052;     // g1 yazı rengi RGB565 (#DADAE4); web paletinden
 static uint16_t arkaRenk = 0;         // g1 arka plan rengi RGB565 (varsayılan siyah)
 static uint8_t arkaMod = 0;           // 0 = arkaRenk, 1 = sayfa rengi (ekrandan okunur; düz renk sayfada şeffaf gibi görünür)
+static bool sayfaVar = false;         // true: sayfa arka plan rengi web'den ayarlı (false: tasarımdaki renge dokunulmaz)
+static uint16_t sayfaRenk = 0;        // Nextion sayfa (page0) arka plan rengi RGB565
+static bool sayfaUydur = false;       // true: t_durum ve g0 kutuları da sayfa rengine uydurulur
+static bool sayfaYeni = true;         // sayfa rengi ekrana yazılmalı
 static uint8_t trMod = 0;             // ekrana giden karakter kümesi: 0 ASCII (Türkçe harfler sadeleşir), 1 ISO-8859-9, 2 UTF-8
 static uint8_t animMod = 0;           // g1 renk animasyonu: 0 sabit, 1 yanıp sönme, 2 gökkuşağı, 3 nefes
 static String mesaj = "";             // g1 metni (RAM; yeniden başlayınca boş)
@@ -82,11 +85,12 @@ static void ayarYukle() {
   EEPROM.get(48, k);
   EEPROM.end();
   if (k.magic == AYAR_MAGIC && k.hiz >= 1 && k.hiz <= 10) { kaymaHiz = k.hiz; yaziRenk = k.renk; animMod = k.pad <= 3 ? k.pad : 0; }
-  uint8_t ek[5];
+  uint8_t ek[8];
   EEPROM.begin(64);
-  for (uint8_t i = 0; i < 5; i++) ek[i] = EEPROM.read(56 + i);
+  for (uint8_t i = 0; i < 8; i++) ek[i] = EEPROM.read(56 + i);
   EEPROM.end();
   trMod = ek[4] <= 2 ? ek[4] : 0;
+  if (ek[5] == 0xA5 || ek[5] == 0xA6) { sayfaVar = true; sayfaUydur = ek[5] == 0xA6; sayfaRenk = ek[6] | (ek[7] << 8); }
   if (ek[0] == 0xA5 && ek[1] <= 1) { arkaMod = ek[1]; arkaRenk = ek[2] | (ek[3] << 8); }
 }
 
@@ -99,6 +103,8 @@ static void ayarKaydet() {
   EEPROM.write(58, arkaRenk & 0xFF);
   EEPROM.write(59, arkaRenk >> 8);
   EEPROM.write(60, trMod);
+  if (!sayfaVar) EEPROM.write(61, 0xFF);
+  else { EEPROM.write(61, sayfaUydur ? 0xA6 : 0xA5); EEPROM.write(62, sayfaRenk & 0xFF); EEPROM.write(63, sayfaRenk >> 8); }
   EEPROM.commit();
   EEPROM.end();
 }
@@ -224,6 +230,17 @@ static String ekranBaytlari(const String& s) {
   return o;
 }
 
+// Küçük JSON yanıtlarından "anahtar":değer okur (ilk eşleşme, from'dan sonra); ArduinoJson'a gerek kalmaz (flash tasarrufu).
+static String jDeger(const String& p, const String& key, int from) {
+  int i = p.indexOf("\"" + key + "\":", from);
+  if (i < 0) return "";
+  i += key.length() + 3;
+  if (p[i] == '"') { int j = p.indexOf('"', i + 1); return j < 0 ? String("") : p.substring(i + 1, j); }
+  int j = i;
+  while (j < (int)p.length() && p[j] != ',' && p[j] != '}' && p[j] != ']') j++;
+  return p.substring(i, j);
+}
+
 static bool havaCek() {
   WiFiClient c;
   HTTPClient http;
@@ -234,9 +251,10 @@ static bool havaCek() {
   if (code != 200) { havaDurum = "HTTP " + String(code); http.end(); return false; }
   String p = http.getString();
   http.end();
-  JsonDocument d;
-  if (deserializeJson(d, p) || d["current"]["temperature_2m"].isNull()) { havaDurum = "yanit okunamadi"; return false; }
-  havaC = d["current"]["temperature_2m"].as<float>();
+  int cur = p.indexOf("\"current\":");  // "current_units" ile karışmaması için iki nokta dahil
+  String t = cur < 0 ? "" : jDeger(p, "temperature_2m", cur);
+  if (!t.length()) { havaDurum = "yanit okunamadi"; return false; }
+  havaC = t.toFloat();
   havaVar = true;
   havaDurum = "tamam";
   return true;
@@ -252,11 +270,13 @@ static bool sehirAra(const String& ad) {
   if (code != 200) { http.end(); return false; }
   String p = http.getString();
   http.end();
-  JsonDocument d;
-  if (deserializeJson(d, p) || d["results"][0].isNull()) return false;
-  sehirAd = asciiMetin(d["results"][0]["name"].as<String>());
-  sehirLat = d["results"][0]["latitude"].as<float>();
-  sehirLon = d["results"][0]["longitude"].as<float>();
+  int r = p.indexOf("\"results\":");
+  if (r < 0) return false;
+  String n = jDeger(p, "name", r), la = jDeger(p, "latitude", r), lo = jDeger(p, "longitude", r);
+  if (!n.length() || !la.length() || !lo.length()) return false;
+  sehirAd = asciiMetin(n);
+  sehirLat = la.toFloat();
+  sehirLon = lo.toFloat();
   sehirKaydet();
   return true;
 }
