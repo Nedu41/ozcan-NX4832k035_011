@@ -114,11 +114,10 @@ void handleTftDone() {
 }
 
 // ---- Web'den ekran kontrolü (ön camda dokunmatik kullanılmıyor; ornek sayfa: t_durum, b_led) ----
-constexpr const char* SURUM = "v0.5.0";
+constexpr const char* SURUM = "v0.6.0";
 constexpr uint16_t C_YESIL = 36628, C_KIRMIZI = 64723, C_KOYU = 2146;  // RGB565: #8FE0A0 #FF9A9A #0E0E14
-// t_durum varsayılanı "IP sürüm" (ör. "192.168.1.144 v0.4.0"); web'den metin girilirse o gösterilir, boş gönderilirse varsayılana döner.
+// t_durum her zaman "IP sürüm" (ör. "192.168.1.144 v0.6.0"); web'den girilen mesaj g1'e gider.
 static String durumTxt = "", nxSon = "-";
-static bool durumOzel = false;
 static String durumVarsayilan() {
   return WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() + " " + SURUM : String("WiFi yok ") + SURUM;
 }
@@ -158,10 +157,19 @@ static void wifiGoster() {
   k(nxCmd(String("b_led.bco=") + (d ? C_YESIL : C_KIRMIZI)));
   k(nxCmd(String("b_led.pco=") + C_KOYU));
   k(nxCmd(d ? "b_led.txt=\"WiFi\"" : "b_led.txt=\"YOK\""));
-  if (!durumOzel) durumTxt = durumVarsayilan();
+  durumTxt = durumVarsayilan();
   k(nxCmd("t_durum.txt=\"" + durumTxt + "\""));
   if (saatHazir()) { k(nxCmd("t_baslik.txt=\"" + saatStr() + "\"")); time_t t = time(nullptr); sonDk = localtime(&t)->tm_min; }
   if (havaVar) k(nxCmd("n0.val=" + String((int)lroundf(havaC))));
+  if (zorla || ayarYeni) {
+    k(nxCmd("g0.tim=" + String(KAYMA_TIM)));
+    k(nxCmd("g0.dis=" + String(kaymaHiz * 2)));
+    k(nxCmd("g1.tim=" + String(KAYMA_TIM)));
+    k(nxCmd("g1.dis=" + String(kaymaHiz * 2)));
+    k(nxCmd("g1.pco=" + String(yaziRenk)));
+    if (mesaj.length()) k(nxCmd("g1.txt=\"" + mesaj + "\""));
+    ayarYeni = false;
+  }
   if ((zorla || haberYeni) && haberMetin.length()) { k(nxCmd("g0.txt=\"" + haberMetin + "\"")); haberYeni = false; }
   nxSon = hata;
   ledSon = d;
@@ -180,7 +188,7 @@ static void apiDurum() {
              ",\"saat\":\"" + (saatHazir() ? saatStr() : String("-")) + "\",\"sehir\":\"" + jesc(sehirAd) +
              "\",\"hava\":\"" + (havaVar ? String(havaC, 1) : String("-")) + "\",\"havad\":\"" + jesc(havaDurum) +
              "\",\"haber\":\"" + jesc(haberMetin.substring(0, 90)) + "\",\"haberd\":\"" + jesc(haberDurum) +
-             "\",\"heap\":" + ESP.getFreeHeap() + "}";
+             "\",\"hiz\":" + kaymaHiz + ",\"renk\":" + yaziRenk + ",\"mesaj\":\"" + jesc(mesaj) + "\",\"heap\":" + ESP.getFreeHeap() + "}";
   web.send(200, "application/json", j);
 }
 
@@ -320,13 +328,16 @@ void setup() {
   ArduinoOTA.begin();
   web.on("/", [] { web.send_P(200, "text/html", ANA_HTML); });
   web.on("/pano.css", [] { web.send_P(200, "text/css", PANO_CSS); });
-  web.on("/api/durum", [] {
-    if (web.hasArg("t")) {
-      String t = nxMetin(web.arg("t"));
-      durumOzel = t.length() > 0;
-      durumTxt = durumOzel ? t : durumVarsayilan();
-      nxSon = nxCmd("t_durum.txt=\"" + durumTxt + "\"");
-    }
+  web.on("/api/durum", [] { apiDurum(); });
+  web.on("/api/mesaj", [] {  // g1 kayar yazı: t = metin (100 karaktere kadar), r = RGB565 renk
+    if (web.hasArg("r")) { yaziRenk = web.arg("r").toInt(); ayarKaydet(); }
+    if (web.hasArg("t")) { mesaj = asciiMetin(web.arg("t")).substring(0, 100); }
+    ayarYeni = true;
+    apiDurum();
+  });
+  web.on("/api/hiz", [] {  // kayma hızı 1..10 (g0 ve g1)
+    int v = web.arg("v").toInt();
+    if (v >= 1 && v <= 10) { kaymaHiz = v; ayarKaydet(); ayarYeni = true; haberDegisAt = 0; }
     apiDurum();
   });
   web.on("/api/sehir", [] {
@@ -411,5 +422,5 @@ void loop() {
     time_t t = time(nullptr);
     if (localtime(&t)->tm_min != sonDk) saatYaz();
   }
-  if (millis() >= ledAt && (d != ledSon || millis() - ledZ > 30000 || haberYeni)) wifiGoster();
+  if (millis() >= ledAt && (d != ledSon || millis() - ledZ > 30000 || haberYeni || ayarYeni)) wifiGoster();
 }

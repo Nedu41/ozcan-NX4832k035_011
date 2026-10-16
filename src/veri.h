@@ -11,7 +11,7 @@
 constexpr const char* NEWS_URL = "https://www.aa.com.tr/tr/rss/default?cat=dunya";  // CrowPanel ile aynı kaynak
 constexpr size_t HABER_MAX = 100;  // g0.txt_maxl (Editor'de 100); aşan başlık kesilir
 constexpr uint8_t HABER_BASLIK = 6;  // RSS'ten alınacak başlık sayısı; ekranda sırayla gösterilir
-constexpr uint32_t KAYMA_GENISLIK = 442, KAYMA_PX_KARAKTER = 11, KAYMA_MS_PX = 38;  // g0: genişlik 442 px; dis=4 px / tim=150 ms ≈ 38 ms/px
+constexpr uint32_t KAYMA_GENISLIK = 442, KAYMA_PX_KARAKTER = 11, KAYMA_TIM = 80;  // g0 genişliği 442 px; tim en az 80 ms kabul edilir (altı 1C hatası), hız adım uzunluğuyla (dis = hız*2 px) ayarlanır
 
 // Şehir (EEPROM'da kalıcı); varsayılan İstanbul
 struct SehirKayit { uint32_t magic; float lat, lon; char ad[32]; };
@@ -22,6 +22,10 @@ static float sehirLat = 41.0138f, sehirLon = 28.9497f;
 static bool havaVar = false;
 static float havaC = 0;
 static String havaDurum = "-", haberMetin = "", haberDurum = "-";
+static uint8_t kaymaHiz = 3;          // 1..10 (g0/g1.dis = hız*2 px); web'den ayarlanır, EEPROM'da kalıcı
+static uint16_t yaziRenk = 57052;     // g1 yazı rengi RGB565 (#DADAE4); web paletinden
+static String mesaj = "";             // g1 metni (RAM; yeniden başlayınca boş)
+static bool ayarYeni = true;          // hız/renk/mesaj ekrana yazılmalı
 static bool haberYeni = false;
 static String haberListe[HABER_BASLIK];
 static uint8_t haberN = 0, haberIdx = 0;
@@ -43,7 +47,7 @@ static void haberSonraki() {
   if (m.length() > HABER_MAX) m = m.substring(0, HABER_MAX);
   haberMetin = m;
   haberYeni = true;
-  haberDegisAt = millis() + (KAYMA_GENISLIK + m.length() * KAYMA_PX_KARAKTER) * KAYMA_MS_PX;
+  haberDegisAt = millis() + (KAYMA_GENISLIK + m.length() * KAYMA_PX_KARAKTER) * KAYMA_TIM / (kaymaHiz * 2);
 }
 
 static void sehirYukle() {
@@ -63,8 +67,28 @@ static void sehirKaydet() {
   EEPROM.end();
 }
 
+struct AyarKayit { uint32_t magic; uint8_t hiz; uint8_t pad; uint16_t renk; };
+constexpr uint32_t AYAR_MAGIC = 0x4E584159;
+
+static void ayarYukle() {
+  AyarKayit k;
+  EEPROM.begin(64);
+  EEPROM.get(48, k);
+  EEPROM.end();
+  if (k.magic == AYAR_MAGIC && k.hiz >= 1 && k.hiz <= 10) { kaymaHiz = k.hiz; yaziRenk = k.renk; }
+}
+
+static void ayarKaydet() {
+  AyarKayit k = {AYAR_MAGIC, kaymaHiz, 0, yaziRenk};
+  EEPROM.begin(64);
+  EEPROM.put(48, k);
+  EEPROM.commit();
+  EEPROM.end();
+}
+
 static void veriBaslat() {
   sehirYukle();
+  ayarYukle();
   configTime(3 * 3600, 0, "pool.ntp.org", "time.google.com");  // Türkiye UTC+3 (yaz saati yok)
 }
 

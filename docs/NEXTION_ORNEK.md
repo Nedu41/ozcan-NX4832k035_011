@@ -22,3 +22,13 @@ Font: ASCII yeterli (Türkçe karakter yok), Font Generator ile 24 punto. Çıkt
 | `g0` | Kayan yazı | AA RSS ilk başlıklar `  ***  ` ile birleşik, ASCII (10 dk'da bir). **`txt_maxl` 100** (varsayılan 10, metin kesilir); başlıklar sığdığı kadar birleştirilir, kayma bitince (süre hesaplanır) sıradaki gelir |
 
 Number yalnız tam sayı gösterir, saat içine `:` konamaz; bu yüzden saat `t_baslik`'ta, sıcaklık `n0`'da.
+
+## v0.6.0: kayan yazılar, hız, renk
+| Bileşen | Tür | Ne yazılır |
+|---|---|---|
+| `t_durum` | Text | yalnız `IP sürüm` (ör. `192.168.1.144 v0.6.0`) |
+| `g1` | Kayan yazı | web "Ekran" sekmesinden girilen mesaj (en çok 100 karakter; **`txt_maxl` 100**), yazı rengi web paletinden (`g1.pco`) |
+| `g0` | Kayan yazı | haber (yukarıda) |
+
+Kayma hızı web'den 1..10: `g0`/`g1` için `tim=80` (Nextion en az 80 ms kabul eder, altı `1C` hatası), `dis = hız*2` px. Hız ve renk EEPROM'da kalıcı; mesaj RAM'de (yeniden başlayınca boş).
+Derece işareti: ASCII font `°` içermez. Çözüm Editor'de: Font Generator'da **ISO-8859-9** kodlamalı font üret (hem `°` hem Türkçe harfler gelir), `n0`'ın yanına statik Text (`°C`) koy.
