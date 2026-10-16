@@ -16,24 +16,26 @@ canvas{width:100%;background:#000;border:2px solid #000;margin:12px 0;image-rend
 .satir{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 </style>
 <div class=bar><b>NX Hub</b><span>WiFi: <span id=wifi>-</span></span><span id=srm>-</span></div>
+<div class=nav style="display:flex;gap:6px;padding:10px 16px;flex-wrap:wrap">
+<button class=sekme-btn data-t=ekran>Ekran</button><button class=sekme-btn data-t=resim>Resim</button><button class=sekme-btn data-t=wifi>WiFi</button><button class=sekme-btn data-t=dosya>Dosya yukle</button></div>
 <main>
-<div class=card><h3>Ekran</h3>
+<div class=card id=c_ekran><h3>Ekran</h3>
 <div class=satir style="margin-top:12px"><input id=dt maxlength=30 placeholder="t_durum metni" style="flex:1;padding:10px;border-radius:8px;font-size:15px"><button class="btn btn-mavi" onclick="yaz()">Gonder</button></div>
 <p style="margin:12px 0 0"><span class=etiket>Son metin</span><span id=dm>-</span><br><span class=etiket>Son komut</span><span id=nx>-</span></p></div>
-<div class=card><h3>Resim gonder</h3>
+<div class=card id=c_resim><h3>Resim gonder</h3>
 <div id=dz>Resmi buraya birak ya da tikla</div>
 <input id=fi type=file accept="image/*" hidden>
 <canvas id=pv width=480 height=320></canvas>
 <div class=satir>Blok <select id=bs><option>2<option selected>3<option>4<option>6</select>
 <button id=go class="btn btn-yesil" disabled>Gonder</button><button id=rs class="btn btn-mavi">Ekrani yenile</button></div>
 <div id=st class=st></div></div>
-<div class=card><h3>WiFi</h3>
+<div class=card id=c_wifi><h3>WiFi</h3>
 <p style="margin:12px 0 0;line-height:1.7"><span class=etiket>Ag</span><b id=ws>-</b><br><span class=etiket>IP</span><span id=wi>-</span><br><span class=etiket>Sinyal</span><span id=wr>-</span></p>
 <div class=satir style="margin-top:12px"><button id=wd class="btn btn-mavi">Ag degistir</button><button id=wx class="btn btn-kirmizi">Kurulum moduna al</button></div>
 <div id=wp hidden style="margin-top:12px"><select id=wsel style="width:100%;padding:10px"></select>
 <div class=satir><input id=wpw type=password placeholder="sifre (acik agda bos)" style="flex:1;padding:10px;border-radius:8px;font-size:15px"><button id=wb class="btn btn-yesil">Baglan</button></div></div>
 <div id=st3 class=st></div></div>
-<div class=card><h3>.tft yukle</h3>
+<div class=card id=c_dosya><h3>Dosya yukle (.tft)</h3>
 <div id=dz2>.tft dosyasini buraya birak ya da tikla</div>
 <input id=ft type=file accept=".tft" hidden>
 <div class=satir style="margin-top:12px"><span id=tn style="flex:1;color:#9ca3af">dosya secilmedi</span>
@@ -118,4 +120,10 @@ $('wb').onclick=()=>{const s=$('wsel').value;if(!s)return;$('st3').textContent='
 $('wx').onclick=()=>{
   if(!confirm('Kayitli WiFi silinecek, cihaz yeniden baslayip NXHub-Kurulum agini acacak. Telefonla o aga baglanip yeni agi secmen gerekir. Devam?'))return;
   fetch('/api/wifisil').then(()=>$('st3').textContent='silindi, cihaz yeniden basliyor: NXHub-Kurulum agina baglan').catch(()=>$('st3').textContent='silindi, cihaz yeniden basliyor')};
+function sek(n){document.querySelectorAll('main>.card').forEach(c=>c.hidden=c.id!='c_'+n);
+  document.querySelectorAll('.sekme-btn').forEach(b=>b.classList.toggle('aktif',b.dataset.t==n));
+  try{localStorage.setItem('sek',n)}catch(e){}}
+document.querySelectorAll('.sekme-btn').forEach(b=>b.onclick=()=>sek(b.dataset.t));
+let sk='ekran';try{sk=localStorage.getItem('sek')||'ekran'}catch(e){}
+sek(document.getElementById('c_'+sk)?sk:'ekran');
 </script>)HTML";
