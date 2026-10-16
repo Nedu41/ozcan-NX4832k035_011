@@ -10,6 +10,6 @@ Proje: `ornek.HMI`, cihaz Basic NX4832K035 (011R), yön **Horizontal**, 480x320.
 | Durum | Text | `t_durum` | 20, 100, 440, 50 | `txt`="bekleniyor", ortalı, yazı `#DADAE4`. ESP-01 `t_durum.txt="..."` ile yazar |
 | Buton | Button | `b_led` | 140, 200, 200, 70 | `txt`="Dokun", zemin `#2C2C38` |
 
-`b_led` davranışı: **Touch Press Event** ve **Touch Release Event** için "Send Component ID" işaretli. Ekran `65 00 02 01 FF FF FF` (basıldı) ve `65 00 02 00 FF FF FF` (bırakıldı) yollar (`02` = `b_led` bileşen id'si; Editor'de 3. eklenen bileşen olduğu için; sıra farklıysa bileşen id'sini not et). Ekranda başka mantık yok; ESP-01 olayı alınca `t_durum.txt` yazar.
+Dokunmatik kullanılmaz (ekran camın arkasında). Kontrol web'den: `http://nxhub.local:81/`. `b_led` gösterge olarak çalışır. ESP-01 açıkken `bco=36628` (`#8FE0A0`), `pco=2146`, `txt="ACIK"` yazar. Kapalıyken `bco=10599`, `pco=57052`, `txt="KAPALI"` yazar. `t_durum.txt` web'den girilen metni gösterir (en çok 30 karakter, Türkçe harfler ASCII'ye çevrilir). `t_durum` için `txt_maxl` ≥ 30, `b_led` için ≥ 6 olmalı.
 
 Font: ASCII yeterli (Türkçe karakter yok), Font Generator ile 24 punto. Çıktı: `ornek.tft`, ESP-01 üzerinden kablosuz yüklenir: `http://nxhub.local:81/tft` (whmi-wri, 460800 baud). SD kart kullanılmaz.
