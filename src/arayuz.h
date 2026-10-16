@@ -12,7 +12,7 @@ main{max-width:560px;margin:16px auto;padding:0 16px}
 #dz.on{border-color:#60a5fa;color:#e5e7eb}
 canvas{width:100%;background:#000;border:2px solid #000;margin:12px 0;image-rendering:pixelated}
 .st{margin-top:10px;color:#9ca3af;min-height:1.4em;font-family:Consolas,monospace;font-size:13px}
-.etiket{display:inline-block;width:70px;color:#9ca3af}
+.etiket{display:inline-block;width:100px;color:#9ca3af}
 .satir{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 </style>
 <div class=bar><b>NX Hub</b><span>WiFi: <span id=wifi>-</span></span><span id=srm>-</span></div>
@@ -21,7 +21,8 @@ canvas{width:100%;background:#000;border:2px solid #000;margin:12px 0;image-rend
 <main>
 <div class=card id=c_ekran><h3>Ekran</h3>
 <div class=satir style="margin-top:12px"><input id=dt maxlength=30 placeholder="ekran metni (bos = IP + surum)" style="flex:1;padding:10px;border-radius:8px;font-size:15px"><button class="btn btn-mavi" onclick="yaz()">Gonder</button></div>
-<p style="margin:12px 0 0"><span class=etiket>Son metin</span><span id=dm>-</span><br><span class=etiket>Son komut</span><span id=nx>-</span></p></div>
+<div class=satir><input id=sh placeholder="sehir (or. Ankara)" style="flex:1;padding:10px;border-radius:8px;font-size:15px"><button class="btn btn-mavi" onclick="sehir()">Sehir ayarla</button><button class="btn btn-turuncu" onclick="f('/api/yenile')">Yenile</button></div>
+<p style="margin:12px 0 0;line-height:1.7"><span class=etiket>Saat</span><span id=vs>-</span><br><span class=etiket>Sehir</span><span id=vh>-</span><br><span class=etiket>Hava</span><span id=vd>-</span><br><span class=etiket>Haber</span><span id=vn>-</span><br><span class=etiket>Haber durumu</span><span id=vb>-</span><br><span class=etiket>Son metin</span><span id=dm>-</span><br><span class=etiket>Son komut</span><span id=nx>-</span></p></div>
 <div class=card id=c_resim><h3>Resim gonder</h3>
 <div id=dz>Resmi buraya birak ya da tikla</div>
 <input id=fi type=file accept="image/*" hidden>
@@ -104,8 +105,10 @@ $('tg').onclick=()=>{
   $('tg').disabled=true;x.onloadend=()=>$('tg').disabled=false;x.send(fd);
 };
 function g(d){dm.textContent=d.durum;nx.textContent=d.nx;wifi.textContent=d.ssid+' ('+d.ip+')';srm.textContent=d.surum+' • Son güncelleme: '+d.tarih;
+vs.textContent=d.saat;vh.textContent=d.sehir+' '+d.hava+' °C';vd.textContent=d.havad;vn.textContent=d.haber||'-';vb.textContent=d.haberd+' (bellek '+d.heap+')';
 ws.textContent=d.ssid||'-';wi.textContent=d.ip;wr.textContent=d.rssi+' dBm'}
 function f(u){fetch(u).then(r=>r.json()).then(g).catch(()=>nx.textContent='baglanti yok')}
+function sehir(){f('/api/sehir?ad='+encodeURIComponent(sh.value))}
 function yaz(){f('/api/durum?t='+encodeURIComponent(dt.value))}
 dt.onkeydown=e=>{if(e.key=='Enter')yaz()};f('/api/durum');setInterval(()=>f('/api/durum'),15000);
 function tara(){$('st3').textContent='aglar taraniyor...';fetch('/api/tara').then(r=>r.json()).then(d=>{
@@ -127,4 +130,5 @@ function sek(n){document.querySelectorAll('main>.card').forEach(c=>c.hidden=c.id
 document.querySelectorAll('.sekme-btn').forEach(b=>b.onclick=()=>sek(b.dataset.t));
 let sk='ekran';try{sk=localStorage.getItem('sek')||'ekran'}catch(e){}
 sek(document.getElementById('c_'+sk)?sk:'ekran');
+if(location.hostname=='192.168.4.1')sek('wifi');
 </script>)HTML";

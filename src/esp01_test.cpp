@@ -1,23 +1,26 @@
 // ESP-01 (ESP8266, 1 MB) bağlantı + OTA + Nextion web kontrolü (http://nxhub.local:81/).
-// WiFi: kayıtlı bilgi varsa onunla; yoksa "NXHub-Kurulum" AP'si açılır, telefondan ağ seçilir (WiFiManager).
+// WiFi: kayıtlı bilgi varsa onunla; yoksa/bağlanamazsa "NXHub-Kurulum" AP'si açılır, telefondan ağ seçilir (kendi captive portalımız, WiFiManager yok: flash tasarrufu).
 #include <Arduino.h>
 #include <ArduinoOTA.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266mDNS.h>
-#include <WiFiManager.h>
+#include <DNSServer.h>
 
 #include "arayuz.h"
+#include "veri.h"
 
 constexpr const char* HOSTNAME = "nxhub";
 constexpr const char* AP_NAME = "NXHub-Kurulum";
 
-WiFiManager wm;
+DNSServer dns;
+static bool apAcik = false;
+static uint32_t apRetry = 0, apBag = 0;
 ESP8266WebServer web(80);  // tek ana sayfa (seri port ekranda olduğu için sonuçlar web'den okunur)
 
 // b_led = ekranda WiFi göstergesi: yeşil "WiFi" bağlı, kırmızı "YOK" değil. Durum değişince ya da 30 sn'de bir yazılır.
 static int8_t ledSon = -1;
-static uint32_t ledAt = 0, ledZ = 0;
+static uint32_t ledAt = 0, ledZ = 0, havaAt = 0, haberAt = 0;  // havaAt/haberAt: bir sonraki çekme zamanı (millis)
 
 // Ekrana komut gönderir (sonuna 3 x 0xFF), cevabı hex + metin olarak döndürür.
 String nxExchange(const String& c, uint32_t waitMs = 400) {
@@ -111,7 +114,7 @@ void handleTftDone() {
 }
 
 // ---- Web'den ekran kontrolü (ön camda dokunmatik kullanılmıyor; ornek sayfa: t_durum, b_led) ----
-constexpr const char* SURUM = "v0.4.0";
+constexpr const char* SURUM = "v0.5.0";
 constexpr uint16_t C_YESIL = 36628, C_KIRMIZI = 64723, C_KOYU = 2146;  // RGB565: #8FE0A0 #FF9A9A #0E0E14
 // t_durum varsayılanı "IP sürüm" (ör. "192.168.1.144 v0.4.0"); web'den metin girilirse o gösterilir, boş gönderilirse varsayılana döner.
 static String durumTxt = "", nxSon = "-";
@@ -122,7 +125,7 @@ static String durumVarsayilan() {
 
 // Komutu yollar; Nextion (bkcmd=2) yalnız hatada cevap verir. Hata yoksa "tamam", varsa hex kodu.
 static String nxCmd(const String& c) {
-  String r = nxExchange(c, 120);
+  String r = nxExchange(c, 40);  // bkcmd=2: hata cevabı birkaç ms içinde gelir
   if (r.startsWith("(")) return "tamam";
   return r.startsWith("1A ") ? String("HATA: bilesen yok") : "HATA: " + r.substring(0, r.indexOf(" |"));
 }
@@ -135,15 +138,32 @@ static String nxMetin(String s) {
   return s.substring(0, 30);
 }
 
+static int sonDk = -1;
+
+static void saatYaz() {
+  if (!saatHazir()) return;
+  nxSon = nxCmd("t_baslik.txt=\"" + saatStr() + "\"") == "tamam" ? nxSon : "HATA: t_baslik";
+  time_t t = time(nullptr);
+  sonDk = localtime(&t)->tm_min;
+}
+
+// Ekrandaki göstergeleri yazar: b_led (WiFi), t_durum (IP+sürüm), t_baslik (saat), n0 (sıcaklık), g0 (haber).
+// g0 yalnız haber değişince ya da zorlanınca yazılır (her yazışta kayma başa döner).
 static void wifiGoster() {
   bool d = WiFi.status() == WL_CONNECTED;
+  bool zorla = ledSon == -1;
+  String hata = "tamam";
+  auto k = [&](const String& r) { if (hata == "tamam" && r != "tamam") hata = r; };
   nxCmd("");  // boş komut: açılışta UART0'a düşen boot çöpünü ekranın ayrıştırıcısından temizler
-  String r = nxCmd(String("b_led.bco=") + (d ? C_YESIL : C_KIRMIZI));
-  String r2 = nxCmd(String("b_led.pco=") + C_KOYU);
-  String r3 = nxCmd(d ? "b_led.txt=\"WiFi\"" : "b_led.txt=\"YOK\"");
+  k(nxCmd(String("b_led.bco=") + (d ? C_YESIL : C_KIRMIZI)));
+  k(nxCmd(String("b_led.pco=") + C_KOYU));
+  k(nxCmd(d ? "b_led.txt=\"WiFi\"" : "b_led.txt=\"YOK\""));
   if (!durumOzel) durumTxt = durumVarsayilan();
-  String r4 = nxCmd("t_durum.txt=\"" + durumTxt + "\"");
-  nxSon = r != "tamam" ? r : r2 != "tamam" ? r2 : r3 != "tamam" ? r3 : r4;  // ilk hata
+  k(nxCmd("t_durum.txt=\"" + durumTxt + "\""));
+  if (saatHazir()) { k(nxCmd("t_baslik.txt=\"" + saatStr() + "\"")); time_t t = time(nullptr); sonDk = localtime(&t)->tm_min; }
+  if (havaVar) k(nxCmd("n0.val=" + String((int)lroundf(havaC))));
+  if ((zorla || haberYeni) && haberMetin.length()) { k(nxCmd("g0.txt=\"" + haberMetin + "\"")); haberYeni = false; }
+  nxSon = hata;
   ledSon = d;
   ledZ = millis();
 }
@@ -156,7 +176,11 @@ static String jesc(String s) {
 static void apiDurum() {
   String j = "{\"durum\":\"" + jesc(durumTxt) + "\",\"nx\":\"" + jesc(nxSon) +
              "\",\"ssid\":\"" + jesc(WiFi.SSID()) + "\",\"ip\":\"" + WiFi.localIP().toString() + "\",\"rssi\":" + WiFi.RSSI() +
-             ",\"surum\":\"" + SURUM + "\",\"tarih\":\"" __DATE__ " " __TIME__ "\"}";
+             ",\"surum\":\"" + SURUM + "\",\"tarih\":\"" __DATE__ " " __TIME__ "\"" +
+             ",\"saat\":\"" + (saatHazir() ? saatStr() : String("-")) + "\",\"sehir\":\"" + jesc(sehirAd) +
+             "\",\"hava\":\"" + (havaVar ? String(havaC, 1) : String("-")) + "\",\"havad\":\"" + jesc(havaDurum) +
+             "\",\"haber\":\"" + jesc(haberMetin.substring(0, 90)) + "\",\"haberd\":\"" + jesc(haberDurum) +
+             "\",\"heap\":" + ESP.getFreeHeap() + "}";
   web.send(200, "application/json", j);
 }
 
@@ -281,12 +305,17 @@ void setup() {
   Serial.begin(9600);  // UART0 ekrana bağlı: log yok, Nextion varsayılan hızı
   WiFi.mode(WIFI_STA);
   WiFi.hostname(HOSTNAME);
-  wm.setConfigPortalTimeout(180);  // kurulum AP'si 3 dk açık kalır, sonra yeniden dener
-  wm.setHostname(HOSTNAME);
-  if (!wm.autoConnect(AP_NAME)) {
-    delay(500);
-    ESP.restart();
+  WiFi.setAutoReconnect(true);
+  WiFi.begin();  // flash'taki kayıtlı ağ
+  for (int i = 0; i < 80 && WiFi.status() != WL_CONNECTED && WiFi.SSID().length(); i++) delay(250);  // en çok 20 sn
+  if (WiFi.status() != WL_CONNECTED) {  // kayıtlı ağ yok ya da bulunamadı: kurulum AP'si + captive portal
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.softAP(AP_NAME);  // şifresiz
+    dns.start(53, "*", WiFi.softAPIP());
+    apAcik = true;
+    apRetry = millis() + 60000;
   }
+  veriBaslat();
   ArduinoOTA.setHostname(HOSTNAME);
   ArduinoOTA.begin();
   web.on("/", [] { web.send_P(200, "text/html", ANA_HTML); });
@@ -298,6 +327,21 @@ void setup() {
       durumTxt = durumOzel ? t : durumVarsayilan();
       nxSon = nxCmd("t_durum.txt=\"" + durumTxt + "\"");
     }
+    apiDurum();
+  });
+  web.on("/api/sehir", [] {
+    String ad = web.arg("ad");
+    ad.trim();
+    if (ad.length()) {
+      havaDurum = sehirAra(ad) ? "sehir ayarlandi" : "sehir bulunamadi";
+      havaAt = 0;  // hemen yeni şehrin havasını çek
+    }
+    apiDurum();
+  });
+  web.on("/api/yenile", [] {  // hava + haber hemen yeniden çekilir, ekran göstergeleri yeniden yazılır
+    havaAt = haberAt = 0;
+    ledSon = -1;
+    ledAt = 0;
     apiDurum();
   });
   web.on("/api/tara", [] {  // eşzamansız tarama: "taraniyor" dönerken tarayıcı tekrar sorar
@@ -330,7 +374,7 @@ void setup() {
   web.on("/api/wifisil", [] {
     web.send(200, "text/plain", "tamam");
     delay(300);
-    wm.resetSettings();  // kayıtlı ağı siler; açılışta NXHub-Kurulum AP'si açılır
+    ESP.eraseConfig();  // kayıtlı ağı siler; açılışta NXHub-Kurulum AP'si açılır
     ESP.restart();
   });
   web.on("/tft", HTTP_GET, [] { web.sendHeader("Location", "/"); web.send(302); });
@@ -340,6 +384,10 @@ void setup() {
   web.on("/probe", handleProbe);
   web.on("/nx", handleNx);
   web.on("/heap", [] { web.send(200, "text/plain", String(ESP.getFreeHeap())); });
+  web.onNotFound([] {  // captive portal: telefonun bağlantı denetimi sayfaları kurulum sayfasına yönlenir
+    if (apAcik) { web.sendHeader("Location", "http://192.168.4.1/"); web.send(302); }
+    else web.send(404, "text/plain", "yok");
+  });
   web.begin();
 }
 
@@ -347,5 +395,20 @@ void loop() {
   ArduinoOTA.handle();
   web.handleClient();
   bool d = WiFi.status() == WL_CONNECTED;
-  if (millis() >= ledAt && (d != ledSon || millis() - ledZ > 30000)) wifiGoster();
+  if (apAcik) {
+    dns.processNextRequest();
+    if (d) { if (!apBag) apBag = millis(); else if (millis() - apBag > 15000) ESP.restart(); }  // bağlandı: AP'siz temiz açılış
+    else {
+      apBag = 0;
+      // kayıtlı ağ var ama o an yok (ör. elektrik kesintisi sonrası modem geç açıldı): AP'ye kimse bağlı değilse dakikada bir yeniden dene
+      if (WiFi.SSID().length() && WiFi.softAPgetStationNum() == 0 && millis() > apRetry) { WiFi.begin(); apRetry = millis() + 60000; }
+    }
+  }
+  if (d && millis() >= havaAt) { havaAt = millis() + (havaCek() ? 15UL * 60000 : 2UL * 60000); ledSon = ledSon == -1 ? -1 : -2; }
+  if (d && millis() >= haberAt) { haberAt = millis() + (haberCek() ? 10UL * 60000 : 2UL * 60000); }
+  if (saatHazir()) {  // dakika değişince saati güncelle
+    time_t t = time(nullptr);
+    if (localtime(&t)->tm_min != sonDk) saatYaz();
+  }
+  if (millis() >= ledAt && (d != ledSon || millis() - ledZ > 30000 || haberYeni)) wifiGoster();
 }
