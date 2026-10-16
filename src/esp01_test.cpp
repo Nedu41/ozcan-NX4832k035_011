@@ -111,9 +111,14 @@ void handleTftDone() {
 }
 
 // ---- Web'den ekran kontrolü (ön camda dokunmatik kullanılmıyor; ornek sayfa: t_durum, b_led) ----
-constexpr const char* SURUM = "v0.3.0";
+constexpr const char* SURUM = "v0.4.0";
 constexpr uint16_t C_YESIL = 36628, C_KIRMIZI = 64723, C_KOYU = 2146;  // RGB565: #8FE0A0 #FF9A9A #0E0E14
-static String durumTxt = "bekleniyor", nxSon = "-";
+// t_durum varsayılanı "IP sürüm" (ör. "192.168.1.144 v0.4.0"); web'den metin girilirse o gösterilir, boş gönderilirse varsayılana döner.
+static String durumTxt = "", nxSon = "-";
+static bool durumOzel = false;
+static String durumVarsayilan() {
+  return WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() + " " + SURUM : String("WiFi yok ") + SURUM;
+}
 
 // Komutu yollar; Nextion (bkcmd=2) yalnız hatada cevap verir. Hata yoksa "tamam", varsa hex kodu.
 static String nxCmd(const String& c) {
@@ -136,7 +141,9 @@ static void wifiGoster() {
   String r = nxCmd(String("b_led.bco=") + (d ? C_YESIL : C_KIRMIZI));
   String r2 = nxCmd(String("b_led.pco=") + C_KOYU);
   String r3 = nxCmd(d ? "b_led.txt=\"WiFi\"" : "b_led.txt=\"YOK\"");
-  nxSon = r != "tamam" ? r : r2 != "tamam" ? r2 : r3;  // ilk hata
+  if (!durumOzel) durumTxt = durumVarsayilan();
+  String r4 = nxCmd("t_durum.txt=\"" + durumTxt + "\"");
+  nxSon = r != "tamam" ? r : r2 != "tamam" ? r2 : r3 != "tamam" ? r3 : r4;  // ilk hata
   ledSon = d;
   ledZ = millis();
 }
@@ -286,7 +293,9 @@ void setup() {
   web.on("/pano.css", [] { web.send_P(200, "text/css", PANO_CSS); });
   web.on("/api/durum", [] {
     if (web.hasArg("t")) {
-      durumTxt = nxMetin(web.arg("t"));
+      String t = nxMetin(web.arg("t"));
+      durumOzel = t.length() > 0;
+      durumTxt = durumOzel ? t : durumVarsayilan();
       nxSon = nxCmd("t_durum.txt=\"" + durumTxt + "\"");
     }
     apiDurum();
@@ -310,6 +319,7 @@ void setup() {
     WiFi.begin(web.arg("s").c_str(), web.arg("p").c_str());
     for (int i = 0; i < 120 && WiFi.status() != WL_CONNECTED; i++) { delay(250); yield(); }
     if (WiFi.status() == WL_CONNECTED) {
+      ledSon = -1;  // IP değişmiş olabilir: ekrandaki göstergeyi hemen yenile
       web.send(200, "application/json", "{\"ok\":1,\"ip\":\"" + WiFi.localIP().toString() + "\"}");
       return;
     }

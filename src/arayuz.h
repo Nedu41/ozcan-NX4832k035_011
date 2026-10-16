@@ -20,7 +20,7 @@ canvas{width:100%;background:#000;border:2px solid #000;margin:12px 0;image-rend
 <button class=sekme-btn data-t=ekran>Ekran</button><button class=sekme-btn data-t=resim>Resim</button><button class=sekme-btn data-t=wifi>WiFi</button><button class=sekme-btn data-t=dosya>Ekran tasarimi</button></div>
 <main>
 <div class=card id=c_ekran><h3>Ekran</h3>
-<div class=satir style="margin-top:12px"><input id=dt maxlength=30 placeholder="t_durum metni" style="flex:1;padding:10px;border-radius:8px;font-size:15px"><button class="btn btn-mavi" onclick="yaz()">Gonder</button></div>
+<div class=satir style="margin-top:12px"><input id=dt maxlength=30 placeholder="ekran metni (bos = IP + surum)" style="flex:1;padding:10px;border-radius:8px;font-size:15px"><button class="btn btn-mavi" onclick="yaz()">Gonder</button></div>
 <p style="margin:12px 0 0"><span class=etiket>Son metin</span><span id=dm>-</span><br><span class=etiket>Son komut</span><span id=nx>-</span></p></div>
 <div class=card id=c_resim><h3>Resim gonder</h3>
 <div id=dz>Resmi buraya birak ya da tikla</div>
