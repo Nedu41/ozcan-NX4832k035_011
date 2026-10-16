@@ -32,6 +32,74 @@ String nxExchange(const String& c, uint32_t waitMs = 400) {
   return hex.length() ? hex + " | " + txt : String("(cevap yok)");
 }
 
+
+// ---- .tft'yi WiFi'den ekrana yükleme (Nextion "whmi-wri" protokolü; dosya flash'a yazılmaz, seriye akıtılır) ----
+constexpr uint32_t NX_BAUD = 9600, UP_BAUD = 460800;
+constexpr size_t UP_BLOCK = 4096;  // Nextion her 4096 baytta 0x05 ile onay verir
+static uint8_t upBuf[UP_BLOCK];
+static size_t upFill = 0;
+static uint32_t upSize = 0, upSent = 0;
+static bool upOk = false;
+
+static bool nxWait05(uint32_t ms) {
+  uint32_t t = millis();
+  while (millis() - t < ms) {
+    while (Serial.available())
+      if (Serial.read() == 0x05) return true;
+    yield();
+  }
+  return false;
+}
+
+static bool upFlushBlock() {
+  Serial.write(upBuf, upFill);
+  upFill = 0;
+  return nxWait05(3000);
+}
+
+void handleTftUpload() {
+  HTTPUpload& u = web.upload();
+  if (u.status == UPLOAD_FILE_START) {
+    upSize = web.arg("size").toInt();
+    upSent = 0;
+    upFill = 0;
+    upOk = upSize > 0;
+    if (!upOk) return;
+    while (Serial.available()) Serial.read();
+    Serial.printf("whmi-wri %u,%u,0", upSize, UP_BAUD);
+    Serial.write(0xFF); Serial.write(0xFF); Serial.write(0xFF);
+    Serial.flush();
+    delay(150);
+    Serial.begin(UP_BAUD);
+    upOk = nxWait05(5000);
+  } else if (u.status == UPLOAD_FILE_WRITE && upOk) {
+    for (size_t i = 0; i < u.currentSize && upOk; i++) {
+      upBuf[upFill++] = u.buf[i];
+      if (upFill == UP_BLOCK) upOk = upFlushBlock();
+    }
+    upSent += u.currentSize;
+  } else if (u.status == UPLOAD_FILE_END) {
+    if (upOk && upFill) upOk = upFlushBlock();
+    upOk = upOk && upSent == upSize;
+    Serial.begin(NX_BAUD);
+  } else if (u.status == UPLOAD_FILE_ABORTED) {
+    upOk = false;
+    Serial.begin(NX_BAUD);
+  }
+}
+
+void handleTftDone() {
+  web.send(upOk ? 200 : 500, "text/plain", upOk ? "tamam: ekran yeniden baslatiliyor" : "HATA: yukleme basarisiz (guc kes-ver, tekrar dene)");
+}
+
+void handleTftForm() {
+  web.send(200, "text/html",
+           "<meta name=viewport content='width=device-width'><body style='background:#14141A;color:#DADAE4;font-family:sans-serif;padding:20px'>"
+           "<h3>Nextion .tft yukle</h3><form id=f method=POST enctype=multipart/form-data>"
+           "<input type=file name=tft accept=.tft required> <button>Yukle</button></form>"
+           "<script>f.onsubmit=()=>{f.action='/tft?size='+f.tft.files[0].size}</script>");
+}
+
 void handleProbe() {
   static const uint32_t bauds[] = {9600, 115200, 19200, 38400, 57600, 4800, 2400, 31250, 230400};
   String out;
@@ -64,6 +132,8 @@ void setup() {
   wm.startWebPortal();  // bağlıyken de http://<ip>/ ile WiFi değiştirilebilir
   ArduinoOTA.setHostname(HOSTNAME);
   ArduinoOTA.begin();
+  web.on("/tft", HTTP_GET, handleTftForm);
+  web.on("/tft", HTTP_POST, handleTftDone, handleTftUpload);
   web.on("/probe", handleProbe);
   web.on("/nx", handleNx);
   web.on("/heap", [] { web.send(200, "text/plain", String(ESP.getFreeHeap())); });
