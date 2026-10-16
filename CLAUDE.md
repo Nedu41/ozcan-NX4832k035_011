@@ -25,4 +25,5 @@ Nextion kendi içinde çalışan akıllı ekran: sayfalar/bileşenler **Nextion 
 3. HUB'dan kalanlar (LedPanel, röle/cihaz yönetimi) ihtiyaç olursa; flash payı dar, RAM ~6 KB TLS sırasında.
 
 ## Açık sorular (kullanıcıya)
-- Ekran yatay mı dikey mi kullanılacak (Nextion'da yön tasarımda sabit; ikisi birden için ayrı sayfalar gerekir)?
+- Kayar yazı: akıcı (yavaş, 1 px adım) mı, hızlı (titrek) mı tercih edilir?
+- Ekran yatay kullanılıyor; yalnız 180° döndürme istendi (Editor'de Direction 180° ile yeni .tft).
