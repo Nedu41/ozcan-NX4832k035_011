@@ -19,6 +19,6 @@ Font: ASCII yeterli (Türkçe karakter yok), Font Generator ile 24 punto. Çıkt
 |---|---|---|
 | `t_baslik` | Text | saat `SS:DD` (NTP, UTC+3), dakikada bir |
 | `n0` | Number | dış sıcaklık, tam sayı °C (Open-Meteo, 15 dk'da bir; şehir web'den ayarlanır, varsayılan İstanbul) |
-| `g0` | Kayan yazı | AA RSS ilk başlıklar `  ***  ` ile birleşik, ASCII (10 dk'da bir). **`txt_maxl` en az 250 olmalı** (varsayılan 10, metin kesilir) |
+| `g0` | Kayan yazı | AA RSS ilk başlıklar `  ***  ` ile birleşik, ASCII (10 dk'da bir). **`txt_maxl` 100** (varsayılan 10, metin kesilir); başlıklar sığdığı kadar birleştirilir, kayma bitince (süre hesaplanır) sıradaki gelir |
 
 Number yalnız tam sayı gösterir, saat içine `:` konamaz; bu yüzden saat `t_baslik`'ta, sıcaklık `n0`'da.

@@ -395,6 +395,7 @@ void loop() {
   ArduinoOTA.handle();
   web.handleClient();
   bool d = WiFi.status() == WL_CONNECTED;
+  if (haberN > 1 && millis() >= haberDegisAt) haberSonraki();  // kayma bitti: sıradaki başlık(lar)
   if (apAcik) {
     dns.processNextRequest();
     if (d) { if (!apBag) apBag = millis(); else if (millis() - apBag > 15000) ESP.restart(); }  // bağlandı: AP'siz temiz açılış

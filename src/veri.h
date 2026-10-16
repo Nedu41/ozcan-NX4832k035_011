@@ -9,8 +9,9 @@
 #include <time.h>
 
 constexpr const char* NEWS_URL = "https://www.aa.com.tr/tr/rss/default?cat=dunya";  // CrowPanel ile aynı kaynak
-constexpr size_t HABER_MAX = 240;  // g0.txt_maxl bundan büyük olmalı (Editor'de 250)
-constexpr uint8_t HABER_BASLIK = 6;
+constexpr size_t HABER_MAX = 100;  // g0.txt_maxl (Editor'de 100); aşan başlık kesilir
+constexpr uint8_t HABER_BASLIK = 6;  // RSS'ten alınacak başlık sayısı; ekranda sırayla gösterilir
+constexpr uint32_t KAYMA_GENISLIK = 442, KAYMA_PX_KARAKTER = 11, KAYMA_MS_PX = 38;  // g0: genişlik 442 px; dis=4 px / tim=150 ms ≈ 38 ms/px
 
 // Şehir (EEPROM'da kalıcı); varsayılan İstanbul
 struct SehirKayit { uint32_t magic; float lat, lon; char ad[32]; };
@@ -22,6 +23,28 @@ static bool havaVar = false;
 static float havaC = 0;
 static String havaDurum = "-", haberMetin = "", haberDurum = "-";
 static bool haberYeni = false;
+static String haberListe[HABER_BASLIK];
+static uint8_t haberN = 0, haberIdx = 0;
+static uint32_t haberDegisAt = 0;  // sıradaki başlık grubuna geçiş zamanı (millis)
+
+// Sığan başlıkları "  ***  " ile birleştirip g0 metnini kurar; kayma süresi kadar sonra bir sonraki grup gelir.
+static void haberSonraki() {
+  if (!haberN) return;
+  String m;
+  uint8_t kullanilan = 0;
+  while (kullanilan < haberN) {
+    const String& t = haberListe[(haberIdx + kullanilan) % haberN];
+    String ek = (m.length() ? "  ***  " : "") + t;
+    if (m.length() && m.length() + ek.length() > HABER_MAX) break;
+    m += ek;
+    kullanilan++;
+  }
+  haberIdx = (haberIdx + kullanilan) % haberN;
+  if (m.length() > HABER_MAX) m = m.substring(0, HABER_MAX);
+  haberMetin = m;
+  haberYeni = true;
+  haberDegisAt = millis() + (KAYMA_GENISLIK + m.length() * KAYMA_PX_KARAKTER) * KAYMA_MS_PX;
+}
 
 static void sehirYukle() {
   SehirKayit k;
@@ -137,12 +160,13 @@ static bool haberCek() {
     return false;
   }
   WiFiClient* s = http.getStreamPtr();
-  String acc, out;
+  String acc;
+  String liste[HABER_BASLIK];
   uint8_t tmp[256];
   uint8_t sayi = 0;
   bool itemGordu = false;  // kanal başlığı <item>'dan önce gelir; yalnız haber başlıkları alınır
   uint32_t t0 = millis(), minHeap = ESP.getFreeHeap();
-  while ((http.connected() || s->available()) && millis() - t0 < 15000 && sayi < HABER_BASLIK && out.length() < HABER_MAX) {
+  while ((http.connected() || s->available()) && millis() - t0 < 15000 && sayi < HABER_BASLIK) {
     int n = s->available();
     if (n <= 0) { delay(5); continue; }
     n = s->readBytes(tmp, n > (int)sizeof tmp ? sizeof tmp : n);
@@ -165,14 +189,17 @@ static bool haberCek() {
       if (t.startsWith("<![CDATA[")) t = t.substring(9, t.length() >= 12 ? t.length() - 3 : 9);
       t = asciiMetin(t);
       if (!t.length()) continue;
-      out += (out.length() ? "  ***  " : "") + t;
-      sayi++;
+      liste[sayi++] = t.length() > HABER_MAX ? t.substring(0, HABER_MAX) : t;
     }
   }
   http.end();
-  if (!out.length()) { haberDurum = "baslik bulunamadi (heap en az " + String(minHeap) + ")"; return false; }
-  if (out.length() > HABER_MAX) out = out.substring(0, HABER_MAX);
-  if (out != haberMetin) { haberMetin = out; haberYeni = true; }
+  if (!sayi) { haberDurum = "baslik bulunamadi (heap en az " + String(minHeap) + ")"; return false; }
+  if (liste[0] != haberListe[0] || sayi != haberN) {  // yeni liste: baştan başla
+    for (uint8_t i = 0; i < sayi; i++) haberListe[i] = liste[i];
+    haberN = sayi;
+    haberIdx = 0;
+    haberSonraki();
+  }
   haberDurum = "tamam, " + String(sayi) + " baslik, heap en az " + String(minHeap);
   return true;
 }
