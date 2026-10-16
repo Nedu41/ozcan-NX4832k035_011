@@ -7,6 +7,8 @@
 #include <ESP8266mDNS.h>
 #include <WiFiManager.h>
 
+#include "foto.h"
+
 constexpr const char* HOSTNAME = "nxhub";
 constexpr const char* AP_NAME = "NXHub-Kurulum";
 
@@ -103,14 +105,6 @@ void handleTftDone() {
   web.send(upOk ? 200 : 500, "text/plain", upOk ? String("tamam: ekran yeniden baslatiliyor") : "HATA: " + upHata + " | ekrandan: " + (upGelen.length() ? upGelen : String("-")) + " (ekranin gucunu kes-ver, tekrar dene)");
 }
 
-void handleTftForm() {
-  web.send(200, "text/html",
-           "<meta name=viewport content='width=device-width'><body style='background:#14141A;color:#DADAE4;font-family:sans-serif;padding:20px'>"
-           "<h3>Nextion .tft yukle</h3><form id=f method=POST enctype=multipart/form-data>"
-           "<input type=file name=tft accept=.tft required> <button>Yukle</button></form>"
-           "<script>f.onsubmit=()=>{f.action='/tft?size='+f.tft.files[0].size}</script>");
-}
-
 // ---- Web'den ekran kontrolü (ön camda dokunmatik kullanılmıyor; ornek sayfa: t_durum, b_led) ----
 constexpr const char* SURUM = "v0.2.0";
 constexpr uint16_t C_DUGME = 10599, C_YAZI = 57052, C_YESIL = 36628, C_KOYU = 2146;  // RGB565: #2C2C38 #DADAE4 #8FE0A0 #0E0E14
@@ -184,7 +178,7 @@ static const char ANA_HTML[] PROGMEM = R"HTML(<!doctype html><html lang=tr><meta
 <div class=satir><button id=led class="btn btn-yesil" style="flex:1" onclick="ac(led.dataset.v=='1'?0:1)">b_led</button></div>
 <div class=satir><input id=dt maxlength=30 placeholder="t_durum metni"><button class="btn btn-mavi" onclick="yaz()">Gonder</button></div>
 <p><span class=etiket>Son metin</span><span id=dm>-</span><br><span class=etiket>Son komut</span><span id=nx>-</span></p>
-</div><p><a href=/tft style="color:#9ca3af">.tft yukle</a></p></main>
+</div><p><a href=/foto style="color:#9ca3af">Resim gonder / .tft yukle</a></p></main>
 <script>
 function g(d){led.dataset.v=d.led;led.classList.toggle('btn-on',d.led==1);led.textContent=d.led?'b_led: ACIK':'b_led: KAPALI';
 dm.textContent=d.durum;nx.textContent=d.nx;wifi.textContent=d.ssid+' ('+d.ip+')';srm.textContent=d.surum+' • Son güncelleme: '+d.tarih}
@@ -192,6 +186,72 @@ function f(u){fetch(u).then(r=>r.json()).then(g).catch(()=>nx.textContent='bagla
 function ac(v){f('/api/led?v='+v)}function yaz(){f('/api/durum?t='+encodeURIComponent(dt.value))}
 dt.onkeydown=e=>{if(e.key=='Enter')yaz()};f('/api/durum')
 </script>)HTML";
+
+// ---- /foto: tarayıcıdan gelen "fill" komut satırlarını ekrana iletir ----
+// Akış denetimi: bkcmd=1 ile ekran her başarılı komuta 0x01 yollar; en fazla FOTO_WINDOW komut onaysız bekler.
+constexpr uint32_t FOTO_BAUD = 115200;
+constexpr uint16_t FOTO_WINDOW = 24;
+static char fotoLine[80];
+static uint8_t fotoLen = 0;
+static uint32_t fotoSent = 0, fotoAcked = 0;
+static bool fotoOk = false;
+
+static void nxEnd() { Serial.write(0xFF); Serial.write(0xFF); Serial.write(0xFF); }
+
+static bool fotoDrain(uint32_t maxInFlight, uint32_t ms) {
+  uint32_t t = millis();
+  for (;;) {
+    while (Serial.available())
+      if (Serial.read() == 0x01) fotoAcked++;
+    if (fotoSent - fotoAcked <= maxInFlight) return true;
+    if (millis() - t > ms) return false;
+    yield();
+  }
+}
+
+static void fotoSendLine() {
+  if (!fotoLen) return;
+  if (!fotoDrain(FOTO_WINDOW, 2000)) { fotoOk = false; return; }
+  Serial.write((const uint8_t*)fotoLine, fotoLen);
+  nxEnd();
+  fotoSent++;
+  fotoLen = 0;
+}
+
+void handleFotoUpload() {
+  HTTPUpload& u = web.upload();
+  if (u.status == UPLOAD_FILE_START) {
+    fotoOk = true; fotoLen = 0; fotoSent = fotoAcked = 0;
+    Serial.print("bkcmd=1"); nxEnd();
+    Serial.printf("bauds=%u", FOTO_BAUD); nxEnd();
+    Serial.flush();
+    delay(100);
+    Serial.begin(FOTO_BAUD);
+    delay(50);
+    while (Serial.available()) Serial.read();
+  } else if (u.status == UPLOAD_FILE_WRITE && fotoOk) {
+    for (size_t i = 0; i < u.currentSize && fotoOk; i++) {
+      char ch = (char)u.buf[i];
+      if (ch == '\n') fotoSendLine();
+      else if (fotoLen < sizeof fotoLine - 1) fotoLine[fotoLen++] = ch;
+      else fotoOk = false;  // beklenmedik uzun satır
+    }
+  } else if (u.status == UPLOAD_FILE_END || u.status == UPLOAD_FILE_ABORTED) {
+    if (u.status == UPLOAD_FILE_ABORTED) fotoOk = false;
+    if (fotoOk) fotoSendLine();
+    fotoOk = fotoOk && fotoDrain(0, 5000) && u.status == UPLOAD_FILE_END;
+    Serial.print("bkcmd=2"); nxEnd();
+    Serial.print("bauds=9600"); nxEnd();
+    Serial.flush();
+    delay(100);
+    Serial.begin(NX_BAUD);
+  }
+}
+
+void handleFotoDone() {
+  web.send(fotoOk ? 200 : 500, "text/plain",
+           fotoOk ? String("tamam: ") + fotoSent + " komut" : String("HATA: ") + fotoAcked + "/" + fotoSent + " komut onaylandi (ESP-01 ve ekranin gucunu kes-ver)");
+}
 
 void handleProbe() {
   static const uint32_t bauds[] = {9600, 115200, 19200, 38400, 57600, 4800, 2400, 31250, 230400};
@@ -239,8 +299,19 @@ void setup() {
     }
     apiDurum();
   });
-  web.on("/tft", HTTP_GET, handleTftForm);
+  web.on("/api/wifi", [] {
+    web.send(200, "application/json", "{\"ssid\":\"" + WiFi.SSID() + "\",\"ip\":\"" + WiFi.localIP().toString() + "\",\"rssi\":" + WiFi.RSSI() + "}");
+  });
+  web.on("/api/wifisil", [] {
+    web.send(200, "text/plain", "tamam");
+    delay(300);
+    wm.resetSettings();  // kayıtlı ağı siler; açılışta NXHub-Kurulum AP'si açılır
+    ESP.restart();
+  });
+  web.on("/tft", HTTP_GET, [] { web.sendHeader("Location", "/foto"); web.send(302); });
   web.on("/tft", HTTP_POST, handleTftDone, handleTftUpload);
+  web.on("/foto", HTTP_GET, [] { web.send_P(200, "text/html", FOTO_HTML); });
+  web.on("/foto", HTTP_POST, handleFotoDone, handleFotoUpload);
   web.on("/probe", handleProbe);
   web.on("/nx", handleNx);
   web.on("/heap", [] { web.send(200, "text/plain", String(ESP.getFreeHeap())); });
