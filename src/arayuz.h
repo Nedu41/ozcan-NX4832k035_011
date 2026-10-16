@@ -17,7 +17,7 @@ canvas{width:100%;background:#000;border:2px solid #000;margin:12px 0;image-rend
 </style>
 <div class=bar><b>NX Hub</b><span>WiFi: <span id=wifi>-</span></span><span id=srm>-</span></div>
 <div class=nav style="display:flex;gap:6px;padding:10px 16px;flex-wrap:wrap">
-<button class=sekme-btn data-t=ekran>Ekran</button><button class=sekme-btn data-t=resim>Resim</button><button class=sekme-btn data-t=wifi>WiFi</button><button class=sekme-btn data-t=dosya>Dosya yukle</button></div>
+<button class=sekme-btn data-t=ekran>Ekran</button><button class=sekme-btn data-t=resim>Resim</button><button class=sekme-btn data-t=wifi>WiFi</button><button class=sekme-btn data-t=dosya>Ekran tasarimi</button></div>
 <main>
 <div class=card id=c_ekran><h3>Ekran</h3>
 <div class=satir style="margin-top:12px"><input id=dt maxlength=30 placeholder="t_durum metni" style="flex:1;padding:10px;border-radius:8px;font-size:15px"><button class="btn btn-mavi" onclick="yaz()">Gonder</button></div>
@@ -35,8 +35,9 @@ canvas{width:100%;background:#000;border:2px solid #000;margin:12px 0;image-rend
 <div id=wp hidden style="margin-top:12px"><select id=wsel style="width:100%;padding:10px"></select>
 <div class=satir><input id=wpw type=password placeholder="sifre (acik agda bos)" style="flex:1;padding:10px;border-radius:8px;font-size:15px"><button id=wb class="btn btn-yesil">Baglan</button></div></div>
 <div id=st3 class=st></div></div>
-<div class=card id=c_dosya><h3>Dosya yukle (.tft)</h3>
-<div id=dz2>.tft dosyasini buraya birak ya da tikla</div>
+<div class=card id=c_dosya><h3>Ekran tasarimi yukle (.tft)</h3>
+<p style="margin:10px 0 0;color:#9ca3af;font-size:13px">Resim degil: Nextion Editor'den cikan ekran tasarimi. Yuklenince ekrandaki tum tasarim degisir. Fotograf icin Resim sekmesini kullan.</p>
+<div id=dz2>Tasarim dosyasini (.tft) buraya birak ya da tikla</div>
 <input id=ft type=file accept=".tft" hidden>
 <div class=satir style="margin-top:12px"><span id=tn style="flex:1;color:#9ca3af">dosya secilmedi</span>
 <button id=tg class="btn btn-turuncu" disabled>Yukle</button></div>
