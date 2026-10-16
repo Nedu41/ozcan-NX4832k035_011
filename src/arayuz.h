@@ -23,6 +23,7 @@ main{max-width:560px;margin:16px auto;padding:0 16px}
 <div class=satir style="margin-top:12px"><input id=dt maxlength=100 placeholder="kayar yazi (g1, en cok 100 karakter)" style="flex:1;padding:10px;border-radius:8px;font-size:15px"><button class="btn btn-mavi" onclick="yaz()">Gonder</button></div>
 <div id=pal style="margin-top:10px"></div>
 <div id=arkapal style="margin-top:10px"></div>
+<div class=satir style="margin-top:10px"><span class=etiket>Karakter</span><select id=kk style="flex:1;padding:10px"><option value=0>ASCII (Turkce harfler sadelesir)<option value=1>ISO-8859-9 (Turkce font)<option value=2>UTF-8</select></div>
 <div class=satir style="margin-top:10px"><span class=etiket>Animasyon</span><select id=an style="flex:1;padding:10px"><option value=0>Sabit<option value=1>Yanip sonen<option value=2>Gokkusagi<option value=3>Nefes</select></div>
 <div class=satir style="margin-top:10px"><span class=etiket>Kayma hizi</span><input id=hz type=range min=1 max=10 value=3 style="flex:1"><b id=hzv>3</b></div>
 <div class=satir><input id=sh placeholder="sehir (or. Ankara)" style="flex:1;padding:10px;border-radius:8px;font-size:15px"><button class="btn btn-mavi" onclick="sehir()">Sehir ayarla</button><button class="btn btn-turuncu" onclick="f('/api/yenile')">Yenile</button></div>
@@ -60,7 +61,7 @@ $('tg').onclick=()=>{
 };
 function g(d){dm.textContent=d.durum;nx.textContent=d.nx;wifi.textContent=d.ssid+' ('+d.ip+')';srm.textContent=d.surum+' • Son güncelleme: '+d.tarih;
 vs.textContent=d.saat;vh.textContent=d.sehir+' '+d.hava+' °C';vd.textContent=d.havad;vn.textContent=d.haber||'-';vb.textContent=d.haberd+' (bellek '+d.heap+')';
-if(document.activeElement!==hz){hz.value=d.hiz;hzv.textContent=d.hiz}renk=d.renk;mark();arka=d.arka;arkam=d.arkam;markA();if(document.activeElement!==an)an.value=d.anim;
+if(document.activeElement!==hz){hz.value=d.hiz;hzv.textContent=d.hiz}renk=d.renk;mark();arka=d.arka;arkam=d.arkam;markA();if(document.activeElement!==an)an.value=d.anim;if(document.activeElement!==kk)kk.value=d.tr;
 ws.textContent=d.ssid||'-';wi.textContent=d.ip;wr.textContent=d.rssi+' dBm'}
 function f(u){fetch(u).then(r=>r.json()).then(g).catch(()=>nx.textContent='baglanti yok')}
 function sehir(){f('/api/sehir?ad='+encodeURIComponent(sh.value))}
@@ -71,7 +72,7 @@ const h565=x=>{const n=parseInt(x.slice(1),16),r=(n>>16)&255,g=(n>>8)&255,b=n&25
 let renk=h565(GRUP[0][1][0]);
 GRUP.forEach(([ad,liste])=>{const r=document.createElement('div');r.className='pg';r.innerHTML='<small>'+ad+'</small>';
   liste.forEach(x=>{const b=document.createElement('button');b.className='sw';b.style.background=x;b.dataset.v=h565(x);b.onclick=()=>{renk=+b.dataset.v;mark();f('/api/mesaj?r='+renk)};r.appendChild(b)});pal.appendChild(r)});
-an.onchange=()=>f('/api/anim?m='+an.value);
+an.onchange=()=>f('/api/anim?m='+an.value);kk.onchange=()=>f('/api/tr?m='+kk.value);
 const ARKA=['#000000','#14141A','#2C2C38','#4B0F0F','#0F2F4B','#0F4B2B','#FFFFFF'];
 let arka=0,arkam=0;
 {const r=document.createElement('div');r.className='pg';r.innerHTML='<small>Arka</small>';

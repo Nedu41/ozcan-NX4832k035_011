@@ -129,14 +129,6 @@ static String nxCmd(const String& c) {
   return r.startsWith("1A ") ? String("HATA: bilesen yok") : "HATA: " + r.substring(0, r.indexOf(" |"));
 }
 
-// Font ASCII: Türkçe harfleri sadeleştir, tırnak/ters bölü at, txt_maxl (30) ile sınırla.
-static String nxMetin(String s) {
-  static const char* tr[][2] = {{"ç","c"},{"Ç","C"},{"ğ","g"},{"Ğ","G"},{"ı","i"},{"İ","I"},{"ö","o"},{"Ö","O"},{"ş","s"},{"Ş","S"},{"ü","u"},{"Ü","U"}};
-  for (auto& p : tr) s.replace(p[0], p[1]);
-  s.replace("\"", ""); s.replace("\\", "");
-  return s.substring(0, 30);
-}
-
 static int sonDk = -1;
 
 static void saatYaz() {
@@ -179,10 +171,10 @@ static void wifiGoster() {
     int32_t arka = arkaRenk;
     if (arkaMod == 1 && !nxOku("get page0.bco", arka)) arka = arkaRenk;  // sayfa rengi okunamazsa seçili renk
     k(nxCmd("g1.bco=" + String(arka)));
-    if (mesaj.length()) k(nxCmd("g1.txt=\"" + mesaj + "\""));
+    if (mesaj.length()) k(nxCmd("g1.txt=\"" + ekranBaytlari(mesaj) + "\""));
     ayarYeni = false;
   }
-  if ((zorla || haberYeni) && haberMetin.length()) { k(nxCmd("g0.txt=\"" + haberMetin + "\"")); haberYeni = false; }
+  if ((zorla || haberYeni) && haberMetin.length()) { k(nxCmd("g0.txt=\"" + ekranBaytlari(haberMetin) + "\"")); haberYeni = false; }
   nxSon = hata;
   ledSon = d;
   ledZ = millis();
@@ -200,7 +192,7 @@ static void apiDurum() {
              ",\"saat\":\"" + (saatHazir() ? saatStr() : String("-")) + "\",\"sehir\":\"" + jesc(sehirAd) +
              "\",\"hava\":\"" + (havaVar ? String(havaC, 1) : String("-")) + "\",\"havad\":\"" + jesc(havaDurum) +
              "\",\"haber\":\"" + jesc(haberMetin.substring(0, 90)) + "\",\"haberd\":\"" + jesc(haberDurum) +
-             "\",\"arka\":" + arkaRenk + ",\"arkam\":" + arkaMod + ",\"anim\":" + animMod + ",\"hiz\":" + kaymaHiz + ",\"renk\":" + yaziRenk + ",\"mesaj\":\"" + jesc(mesaj) + "\",\"heap\":" + ESP.getFreeHeap() + "}";
+             "\",\"tr\":" + trMod + ",\"arka\":" + arkaRenk + ",\"arkam\":" + arkaMod + ",\"anim\":" + animMod + ",\"hiz\":" + kaymaHiz + ",\"renk\":" + yaziRenk + ",\"mesaj\":\"" + jesc(mesaj) + "\",\"heap\":" + ESP.getFreeHeap() + "}";
   web.send(200, "application/json", j);
 }
 
@@ -277,8 +269,13 @@ void setup() {
   web.on("/api/durum", [] { apiDurum(); });
   web.on("/api/mesaj", [] {  // g1 kayar yazı: t = metin (100 karaktere kadar), r = RGB565 renk
     if (web.hasArg("r")) { yaziRenk = web.arg("r").toInt(); ayarKaydet(); }
-    if (web.hasArg("t")) { mesaj = asciiMetin(web.arg("t")).substring(0, 100); }
+    if (web.hasArg("t")) { mesaj = utf8Kes(temizMetin(web.arg("t")), 100); }
     ayarYeni = true;
+    apiDurum();
+  });
+  web.on("/api/tr", [] {  // karakter kümesi: 0 ASCII, 1 ISO-8859-9, 2 UTF-8; metinler yeniden yazılır
+    int m = web.arg("m").toInt();
+    if (m >= 0 && m <= 2) { trMod = m; ayarKaydet(); ayarYeni = true; haberYeni = true; }
     apiDurum();
   });
   web.on("/api/arka", [] {  // g1 arka planı: r = RGB565 renk, ya da s=1 -> sayfa rengi

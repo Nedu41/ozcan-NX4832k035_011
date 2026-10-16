@@ -26,6 +26,7 @@ static uint8_t kaymaHiz = 3;          // 1..10 (g0/g1.dis = hız*2 px); web'den 
 static uint16_t yaziRenk = 57052;     // g1 yazı rengi RGB565 (#DADAE4); web paletinden
 static uint16_t arkaRenk = 0;         // g1 arka plan rengi RGB565 (varsayılan siyah)
 static uint8_t arkaMod = 0;           // 0 = arkaRenk, 1 = sayfa rengi (ekrandan okunur; düz renk sayfada şeffaf gibi görünür)
+static uint8_t trMod = 0;             // ekrana giden karakter kümesi: 0 ASCII (Türkçe harfler sadeleşir), 1 ISO-8859-9, 2 UTF-8
 static uint8_t animMod = 0;           // g1 renk animasyonu: 0 sabit, 1 yanıp sönme, 2 gökkuşağı, 3 nefes
 static String mesaj = "";             // g1 metni (RAM; yeniden başlayınca boş)
 static bool ayarYeni = true;          // hız/renk/mesaj ekrana yazılmalı
@@ -33,6 +34,8 @@ static bool haberYeni = false;
 static String haberListe[HABER_BASLIK];
 static uint8_t haberN = 0, haberIdx = 0;
 static uint32_t haberDegisAt = 0;  // sıradaki başlık grubuna geçiş zamanı (millis)
+
+static String utf8Kes(const String& s, size_t n);
 
 // Sığan başlıkları "  ***  " ile birleştirip g0 metnini kurar; kayma süresi kadar sonra bir sonraki grup gelir.
 static void haberSonraki() {
@@ -47,7 +50,7 @@ static void haberSonraki() {
     kullanilan++;
   }
   haberIdx = (haberIdx + kullanilan) % haberN;
-  if (m.length() > HABER_MAX) m = m.substring(0, HABER_MAX);
+  m = utf8Kes(m, HABER_MAX);
   haberMetin = m;
   haberYeni = true;
   haberDegisAt = millis() + (KAYMA_GENISLIK + m.length() * KAYMA_PX_KARAKTER) * KAYMA_TIM / (kaymaHiz * 2);
@@ -79,10 +82,11 @@ static void ayarYukle() {
   EEPROM.get(48, k);
   EEPROM.end();
   if (k.magic == AYAR_MAGIC && k.hiz >= 1 && k.hiz <= 10) { kaymaHiz = k.hiz; yaziRenk = k.renk; animMod = k.pad <= 3 ? k.pad : 0; }
-  uint8_t ek[4];
+  uint8_t ek[5];
   EEPROM.begin(64);
-  for (uint8_t i = 0; i < 4; i++) ek[i] = EEPROM.read(56 + i);
+  for (uint8_t i = 0; i < 5; i++) ek[i] = EEPROM.read(56 + i);
   EEPROM.end();
+  trMod = ek[4] <= 2 ? ek[4] : 0;
   if (ek[0] == 0xA5 && ek[1] <= 1) { arkaMod = ek[1]; arkaRenk = ek[2] | (ek[3] << 8); }
 }
 
@@ -94,6 +98,7 @@ static void ayarKaydet() {
   EEPROM.write(57, arkaMod);
   EEPROM.write(58, arkaRenk & 0xFF);
   EEPROM.write(59, arkaRenk >> 8);
+  EEPROM.write(60, trMod);
   EEPROM.commit();
   EEPROM.end();
 }
@@ -161,6 +166,61 @@ static String asciiMetin(String s) {
     if (c >= 32 && c < 127) o += (char)c;
   }
   o.trim();
+  return o;
+}
+
+// Dahili metin: UTF-8, yalnız ASCII + Türkçe harfler + '°' kalır; tırnak/ters bölü ve diğer karakterler atılır.
+static bool trIzinli(uint16_t cp) {
+  return cp == 0xC7 || cp == 0xE7 || cp == 0x11E || cp == 0x11F || cp == 0x130 || cp == 0x131 || cp == 0xD6 || cp == 0xF6 ||
+         cp == 0x15E || cp == 0x15F || cp == 0xDC || cp == 0xFC || cp == 0xB0;
+}
+
+static String temizMetin(String s) {
+  static const char* tr[][2] = {{"’","'"},{"‘","'"},{"“","'"},{"”","'"},{"–","-"},{"—","-"},{"…","..."},{"&amp;","&"},{"&quot;","'"},{"&apos;","'"},
+                                {"&#39;","'"},{"&#x27;","'"},{"&lt;","<"},{"&gt;",">"},{"&nbsp;"," "}};
+  for (auto& p : tr) s.replace(p[0], p[1]);
+  String o;
+  for (size_t i = 0; i < s.length(); i++) {
+    uint8_t c = s[i];
+    if (c >= 0xC2 && c <= 0xC5 && i + 1 < s.length()) {
+      uint16_t cp = ((c & 0x1F) << 6) | (s[i + 1] & 0x3F);
+      if (trIzinli(cp)) { o += (char)c; o += s[i + 1]; }
+      i++;
+    } else if (c >= 32 && c < 127 && c != '"' && c != '\\') o += (char)c;
+  }
+  o.trim();
+  return o;
+}
+
+// UTF-8 metni en çok n bayta keser, karakteri ortadan bölmez.
+static String utf8Kes(const String& s, size_t n) {
+  if (s.length() <= n) return s;
+  while (n > 0 && ((uint8_t)s[n] & 0xC0) == 0x80) n--;
+  return s.substring(0, n);
+}
+
+// Dahili UTF-8 metni seçili karakter kümesinde ekran baytlarına çevirir.
+static String ekranBaytlari(const String& s) {
+  if (trMod == 2) return s;
+  String o;
+  for (size_t i = 0; i < s.length(); i++) {
+    uint8_t c = s[i];
+    if (c < 0x80) { o += (char)c; continue; }
+    if (i + 1 >= s.length()) break;
+    uint16_t cp = ((c & 0x1F) << 6) | (s[++i] & 0x3F);
+    char iso = 0, asc = 0;
+    switch (cp) {
+      case 0xC7: iso = 0xC7; asc = 'C'; break;  case 0xE7: iso = 0xE7; asc = 'c'; break;
+      case 0x11E: iso = 0xD0; asc = 'G'; break; case 0x11F: iso = 0xF0; asc = 'g'; break;
+      case 0x130: iso = 0xDD; asc = 'I'; break; case 0x131: iso = 0xFD; asc = 'i'; break;
+      case 0xD6: iso = 0xD6; asc = 'O'; break;  case 0xF6: iso = 0xF6; asc = 'o'; break;
+      case 0x15E: iso = 0xDE; asc = 'S'; break; case 0x15F: iso = 0xFE; asc = 's'; break;
+      case 0xDC: iso = 0xDC; asc = 'U'; break;  case 0xFC: iso = 0xFC; asc = 'u'; break;
+      case 0xB0: iso = 0xB0; asc = 0; break;
+    }
+    if (trMod == 1) { if (iso) o += iso; }
+    else if (asc) o += asc;
+  }
   return o;
 }
 
@@ -247,9 +307,9 @@ static bool haberCek() {
       acc.remove(0, b + 8);
       t.trim();
       if (t.startsWith("<![CDATA[")) t = t.substring(9, t.length() >= 12 ? t.length() - 3 : 9);
-      t = asciiMetin(t);
+      t = temizMetin(t);
       if (!t.length()) continue;
-      liste[sayi++] = t.length() > HABER_MAX ? t.substring(0, HABER_MAX) : t;
+      liste[sayi++] = utf8Kes(t, HABER_MAX);
     }
   }
   http.end();
