@@ -22,7 +22,7 @@ Kaynak: `NX4832k035_011.jpeg` (kartın arka yüzü fotoğrafı, 2026-10-12). Kar
 - Çip 25Q80 (GigaDevice, 0xC8/0x4014) = 1 MB; kristal 26 MHz. Yeni modül MAC `fc:f5:c4:a8:0b:ac`
 - Ekran bağlantısı çapraz: ESP-01 TX -> Nextion RX, ESP-01 RX -> Nextion TX, ortak GND. UART0 ekranda; log yok, güncelleme OTA (`pio run -e esp01_ota -t upload`, `nxhub.local`)
 - GPIO0 yalnız flaş modu için GND'ye çekilir; adaptörde RTS yok, flaş/reset elle: `esptool --before no-reset --after no-reset`
-- WiFi: WiFiManager (`NXHub-Kurulum` AP'si), bağlıyken `http://nxhub.local/`; sınama arayüzü `http://nxhub.local:81/probe`, `/nx?c=<komut>`
+- WiFi: WiFiManager (`NXHub-Kurulum` AP'si), tek ana sayfa `http://nxhub.local/` (ekran metni, resim gönder, WiFi ayarı, .tft yükle); tanı: `/probe`, `/nx?c=<komut>`
 
 ## Teyit bekleyen
 - Kablonun renk sırası

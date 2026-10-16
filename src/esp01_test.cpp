@@ -7,13 +7,17 @@
 #include <ESP8266mDNS.h>
 #include <WiFiManager.h>
 
-#include "foto.h"
+#include "arayuz.h"
 
 constexpr const char* HOSTNAME = "nxhub";
 constexpr const char* AP_NAME = "NXHub-Kurulum";
 
 WiFiManager wm;
-ESP8266WebServer web(81);  // Nextion sinama arayüzü (seri port ekranda olduğu için sonuç web'den okunur)
+ESP8266WebServer web(80);  // tek ana sayfa (seri port ekranda olduğu için sonuçlar web'den okunur)
+
+// b_led = ekranda WiFi göstergesi: yeşil "WiFi" bağlı, kırmızı "YOK" değil. Durum değişince ya da 30 sn'de bir yazılır.
+static int8_t ledSon = -1;
+static uint32_t ledAt = 0, ledZ = 0;
 
 // Ekrana komut gönderir (sonuna 3 x 0xFF), cevabı hex + metin olarak döndürür.
 String nxExchange(const String& c, uint32_t waitMs = 400) {
@@ -102,13 +106,13 @@ void handleTftUpload() {
 }
 
 void handleTftDone() {
+  if (upOk) { ledSon = -1; ledAt = millis() + 8000; }  // ekran yeniden başlar; göstergeyi sonra tekrar yaz
   web.send(upOk ? 200 : 500, "text/plain", upOk ? String("tamam: ekran yeniden baslatiliyor") : "HATA: " + upHata + " | ekrandan: " + (upGelen.length() ? upGelen : String("-")) + " (ekranin gucunu kes-ver, tekrar dene)");
 }
 
 // ---- Web'den ekran kontrolü (ön camda dokunmatik kullanılmıyor; ornek sayfa: t_durum, b_led) ----
-constexpr const char* SURUM = "v0.2.0";
-constexpr uint16_t C_DUGME = 10599, C_YAZI = 57052, C_YESIL = 36628, C_KOYU = 2146;  // RGB565: #2C2C38 #DADAE4 #8FE0A0 #0E0E14
-static bool ledAcik = false;
+constexpr const char* SURUM = "v0.3.0";
+constexpr uint16_t C_YESIL = 36628, C_KIRMIZI = 64723, C_KOYU = 2146;  // RGB565: #8FE0A0 #FF9A9A #0E0E14
 static String durumTxt = "bekleniyor", nxSon = "-";
 
 // Komutu yollar; Nextion (bkcmd=2) yalnız hatada cevap verir. Hata yoksa "tamam", varsa hex kodu.
@@ -126,17 +130,26 @@ static String nxMetin(String s) {
   return s.substring(0, 30);
 }
 
-static void ledUygula() {
-  String r = nxCmd(String("b_led.bco=") + (ledAcik ? C_YESIL : C_DUGME));
-  String r2 = nxCmd(String("b_led.pco=") + (ledAcik ? C_KOYU : C_YAZI));
-  String r3 = nxCmd(ledAcik ? "b_led.txt=\"ACIK\"" : "b_led.txt=\"KAPALI\"");
+static void wifiGoster() {
+  bool d = WiFi.status() == WL_CONNECTED;
+  nxCmd("");  // boş komut: açılışta UART0'a düşen boot çöpünü ekranın ayrıştırıcısından temizler
+  String r = nxCmd(String("b_led.bco=") + (d ? C_YESIL : C_KIRMIZI));
+  String r2 = nxCmd(String("b_led.pco=") + C_KOYU);
+  String r3 = nxCmd(d ? "b_led.txt=\"WiFi\"" : "b_led.txt=\"YOK\"");
   nxSon = r != "tamam" ? r : r2 != "tamam" ? r2 : r3;  // ilk hata
+  ledSon = d;
+  ledZ = millis();
+}
+
+static String jesc(String s) {
+  s.replace("\\", "\\\\"); s.replace("\"", "\\\"");
+  return s;
 }
 
 static void apiDurum() {
-  String j = "{\"led\":" + String(ledAcik) + ",\"durum\":\"" + durumTxt + "\",\"nx\":\"" + nxSon +
-             "\",\"ssid\":\"" + WiFi.SSID() + "\",\"ip\":\"" + WiFi.localIP().toString() + "\",\"surum\":\"" + SURUM +
-             "\",\"tarih\":\"" __DATE__ " " __TIME__ "\"}";
+  String j = "{\"durum\":\"" + jesc(durumTxt) + "\",\"nx\":\"" + jesc(nxSon) +
+             "\",\"ssid\":\"" + jesc(WiFi.SSID()) + "\",\"ip\":\"" + WiFi.localIP().toString() + "\",\"rssi\":" + WiFi.RSSI() +
+             ",\"surum\":\"" + SURUM + "\",\"tarih\":\"" __DATE__ " " __TIME__ "\"}";
   web.send(200, "application/json", j);
 }
 
@@ -171,21 +184,6 @@ body{margin:0;font-family:system-ui,sans-serif;color:var(--text)}
 .etiket{display:inline-block;width:110px;color:var(--muted)}#nx{font-family:Consolas,monospace}
 )CSS";
 
-static const char ANA_HTML[] PROGMEM = R"HTML(<!doctype html><html lang=tr><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><title>NX Hub</title><link rel=stylesheet href=/pano.css>
-<div class=bar><b>NX Hub</b><span>WiFi: <span id=wifi>-</span></span><span id=srm>-</span></div>
-<main><div class=card><h3>Ekran</h3>
-<div class=satir><button id=led class="btn btn-yesil" style="flex:1" onclick="ac(led.dataset.v=='1'?0:1)">b_led</button></div>
-<div class=satir><input id=dt maxlength=30 placeholder="t_durum metni"><button class="btn btn-mavi" onclick="yaz()">Gonder</button></div>
-<p><span class=etiket>Son metin</span><span id=dm>-</span><br><span class=etiket>Son komut</span><span id=nx>-</span></p>
-</div><p><a href=/foto style="color:#9ca3af">Resim gonder / .tft yukle</a></p></main>
-<script>
-function g(d){led.dataset.v=d.led;led.classList.toggle('btn-on',d.led==1);led.textContent=d.led?'b_led: ACIK':'b_led: KAPALI';
-dm.textContent=d.durum;nx.textContent=d.nx;wifi.textContent=d.ssid+' ('+d.ip+')';srm.textContent=d.surum+' • Son güncelleme: '+d.tarih}
-function f(u){fetch(u).then(r=>r.json()).then(g).catch(()=>nx.textContent='baglanti yok')}
-function ac(v){f('/api/led?v='+v)}function yaz(){f('/api/durum?t='+encodeURIComponent(dt.value))}
-dt.onkeydown=e=>{if(e.key=='Enter')yaz()};f('/api/durum')
-</script>)HTML";
 
 // ---- /foto: tarayıcıdan gelen "fill" komut satırlarını ekrana iletir ----
 // Akış denetimi: bkcmd=1 ile ekran her başarılı komuta 0x01 yollar; en fazla FOTO_WINDOW komut onaysız bekler.
@@ -282,16 +280,10 @@ void setup() {
     delay(500);
     ESP.restart();
   }
-  wm.startWebPortal();  // bağlıyken de http://<ip>/ ile WiFi değiştirilebilir
   ArduinoOTA.setHostname(HOSTNAME);
   ArduinoOTA.begin();
   web.on("/", [] { web.send_P(200, "text/html", ANA_HTML); });
   web.on("/pano.css", [] { web.send_P(200, "text/css", PANO_CSS); });
-  web.on("/api/led", [] {
-    ledAcik = web.arg("v") == "1";
-    ledUygula();
-    apiDurum();
-  });
   web.on("/api/durum", [] {
     if (web.hasArg("t")) {
       durumTxt = nxMetin(web.arg("t"));
@@ -299,8 +291,31 @@ void setup() {
     }
     apiDurum();
   });
-  web.on("/api/wifi", [] {
-    web.send(200, "application/json", "{\"ssid\":\"" + WiFi.SSID() + "\",\"ip\":\"" + WiFi.localIP().toString() + "\",\"rssi\":" + WiFi.RSSI() + "}");
+  web.on("/api/tara", [] {  // eşzamansız tarama: "taraniyor" dönerken tarayıcı tekrar sorar
+    int n = WiFi.scanComplete();
+    if (n == WIFI_SCAN_FAILED) WiFi.scanNetworks(true, true);
+    if (n < 0) { web.send(200, "application/json", "{\"durum\":\"taraniyor\"}"); return; }
+    String j = "{\"aglar\":[";
+    int k = 0;
+    for (int i = 0; i < n && k < 15; i++) {
+      if (!WiFi.SSID(i).length()) continue;
+      if (k++) j += ',';
+      j += "{\"s\":\"" + jesc(WiFi.SSID(i)) + "\",\"r\":" + WiFi.RSSI(i) + ",\"a\":" + (WiFi.encryptionType(i) != ENC_TYPE_NONE) + "}";
+    }
+    WiFi.scanDelete();
+    web.send(200, "application/json", j + "]}");
+  });
+  web.on("/api/wifikaydet", [] {  // yeni ağa bağlan; olmazsa eskisini geri yükle
+    String os = WiFi.SSID(), op = WiFi.psk();
+    WiFi.begin(web.arg("s").c_str(), web.arg("p").c_str());
+    for (int i = 0; i < 120 && WiFi.status() != WL_CONNECTED; i++) { delay(250); yield(); }
+    if (WiFi.status() == WL_CONNECTED) {
+      web.send(200, "application/json", "{\"ok\":1,\"ip\":\"" + WiFi.localIP().toString() + "\"}");
+      return;
+    }
+    WiFi.begin(os.c_str(), op.c_str());
+    for (int i = 0; i < 40 && WiFi.status() != WL_CONNECTED; i++) { delay(250); yield(); }
+    web.send(200, "application/json", "{\"ok\":0}");
   });
   web.on("/api/wifisil", [] {
     web.send(200, "text/plain", "tamam");
@@ -308,9 +323,9 @@ void setup() {
     wm.resetSettings();  // kayıtlı ağı siler; açılışta NXHub-Kurulum AP'si açılır
     ESP.restart();
   });
-  web.on("/tft", HTTP_GET, [] { web.sendHeader("Location", "/foto"); web.send(302); });
+  web.on("/tft", HTTP_GET, [] { web.sendHeader("Location", "/"); web.send(302); });
   web.on("/tft", HTTP_POST, handleTftDone, handleTftUpload);
-  web.on("/foto", HTTP_GET, [] { web.send_P(200, "text/html", FOTO_HTML); });
+  web.on("/foto", HTTP_GET, [] { web.sendHeader("Location", "/"); web.send(302); });
   web.on("/foto", HTTP_POST, handleFotoDone, handleFotoUpload);
   web.on("/probe", handleProbe);
   web.on("/nx", handleNx);
@@ -319,7 +334,8 @@ void setup() {
 }
 
 void loop() {
-  wm.process();
   ArduinoOTA.handle();
   web.handleClient();
+  bool d = WiFi.status() == WL_CONNECTED;
+  if (millis() >= ledAt && (d != ledSon || millis() - ledZ > 30000)) wifiGoster();
 }
