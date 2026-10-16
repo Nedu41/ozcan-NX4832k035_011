@@ -34,18 +34,24 @@ String nxExchange(const String& c, uint32_t waitMs = 400) {
 
 
 // ---- .tft'yi WiFi'den ekrana yükleme (Nextion "whmi-wri" protokolü; dosya flash'a yazılmaz, seriye akıtılır) ----
-constexpr uint32_t NX_BAUD = 9600, UP_BAUD = 460800;
+constexpr uint32_t NX_BAUD = 9600, UP_BAUD = 115200;
 constexpr size_t UP_BLOCK = 4096;  // Nextion her 4096 baytta 0x05 ile onay verir
 static uint8_t upBuf[UP_BLOCK];
 static size_t upFill = 0;
 static uint32_t upSize = 0, upSent = 0;
 static bool upOk = false;
+static String upHata;
+
+static String upGelen;  // onay beklerken gelen 0x05 dışı baytlar (teşhis)
 
 static bool nxWait05(uint32_t ms) {
   uint32_t t = millis();
   while (millis() - t < ms) {
-    while (Serial.available())
-      if (Serial.read() == 0x05) return true;
+    while (Serial.available()) {
+      uint8_t b = Serial.read();
+      if (b == 0x05) return true;
+      if (upGelen.length() < 60) { char h[4]; snprintf(h, sizeof h, "%02X ", b); upGelen += h; }
+    }
     yield();
   }
   return false;
@@ -54,7 +60,7 @@ static bool nxWait05(uint32_t ms) {
 static bool upFlushBlock() {
   Serial.write(upBuf, upFill);
   upFill = 0;
-  return nxWait05(3000);
+  return nxWait05(10000);
 }
 
 void handleTftUpload() {
@@ -64,32 +70,37 @@ void handleTftUpload() {
     upSent = 0;
     upFill = 0;
     upOk = upSize > 0;
+    upHata = upOk ? "" : "boyut yok";
+    upGelen = "";
     if (!upOk) return;
+    nxExchange("", 100);  // yarım komut kalıntısını temizle
+    if (nxExchange("connect", 500).indexOf("comok") < 0) { upOk = false; upHata = "ekran 9600'de cevap vermiyor"; return; }
     while (Serial.available()) Serial.read();
     Serial.printf("whmi-wri %u,%u,0", upSize, UP_BAUD);
     Serial.write(0xFF); Serial.write(0xFF); Serial.write(0xFF);
     Serial.flush();
-    delay(150);
-    Serial.begin(UP_BAUD);
+    Serial.begin(UP_BAUD);  // 0x05 onayı yeni hızda gelir; gecikme olursa kaçar
     upOk = nxWait05(5000);
+    if (!upOk) upHata = "baslangic onayi (0x05) gelmedi";
   } else if (u.status == UPLOAD_FILE_WRITE && upOk) {
     for (size_t i = 0; i < u.currentSize && upOk; i++) {
       upBuf[upFill++] = u.buf[i];
-      if (upFill == UP_BLOCK) upOk = upFlushBlock();
+      if (upFill == UP_BLOCK && !(upOk = upFlushBlock())) upHata = "blok onayi gelmedi, gonderilen: " + String(upSent + i + 1);
     }
     upSent += u.currentSize;
   } else if (u.status == UPLOAD_FILE_END) {
-    if (upOk && upFill) upOk = upFlushBlock();
-    upOk = upOk && upSent == upSize;
+    if (upOk && upFill && !(upOk = upFlushBlock())) upHata = "son blok onayi gelmedi";
+    if (upOk && upSent != upSize) { upOk = false; upHata = "boyut uyusmuyor: " + String(upSent) + "/" + String(upSize); }
     Serial.begin(NX_BAUD);
   } else if (u.status == UPLOAD_FILE_ABORTED) {
     upOk = false;
+    upHata = "baglanti koptu";
     Serial.begin(NX_BAUD);
   }
 }
 
 void handleTftDone() {
-  web.send(upOk ? 200 : 500, "text/plain", upOk ? "tamam: ekran yeniden baslatiliyor" : "HATA: yukleme basarisiz (guc kes-ver, tekrar dene)");
+  web.send(upOk ? 200 : 500, "text/plain", upOk ? String("tamam: ekran yeniden baslatiliyor") : "HATA: " + upHata + " | ekrandan: " + (upGelen.length() ? upGelen : String("-")) + " (ekranin gucunu kes-ver, tekrar dene)");
 }
 
 void handleTftForm() {

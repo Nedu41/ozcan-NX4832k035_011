@@ -2,7 +2,7 @@
 
 Amaç: ekran + ESP-01 haberleşmesini doğrulamak. Tek sayfa, üç bileşen. Tam tasarım için `NEXTION_TASARIM.md`.
 
-Proje: `ornek.HMI`, cihaz Basic NX4832K035 (011R), yön **Horizontal**, 480x320. Sayfa adı `ana` (id 0). Renkler `NEXTION_TASARIM.md`'deki palet: zemin `#14141A`, yazı `#DADAE4`, buton `#2C2C38`.
+Proje: `ornek.HMI`, cihaz **Enhanced** → NX4832K035_011 (K = Enhanced serisi; Basic seçilirse ekran "Model does not match" verir), yön **Horizontal**, 480x320. Sayfa adı `ana` (id 0). Renkler `NEXTION_TASARIM.md`'deki palet: zemin `#14141A`, yazı `#DADAE4`, buton `#2C2C38`.
 
 | Bileşen | Tür | `objname` | x, y, w, h | Ayar |
 |---|---|---|---|---|
