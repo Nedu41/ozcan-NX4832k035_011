@@ -24,6 +24,8 @@ static float havaC = 0;
 static String havaDurum = "-", haberMetin = "", haberDurum = "-";
 static uint8_t kaymaHiz = 3;          // 1..10 (g0/g1.dis = hız*2 px); web'den ayarlanır, EEPROM'da kalıcı
 static uint16_t yaziRenk = 57052;     // g1 yazı rengi RGB565 (#DADAE4); web paletinden
+static uint16_t arkaRenk = 0;         // g1 arka plan rengi RGB565 (varsayılan siyah)
+static uint8_t arkaMod = 0;           // 0 = arkaRenk, 1 = sayfa rengi (ekrandan okunur; düz renk sayfada şeffaf gibi görünür)
 static uint8_t animMod = 0;           // g1 renk animasyonu: 0 sabit, 1 yanıp sönme, 2 gökkuşağı, 3 nefes
 static String mesaj = "";             // g1 metni (RAM; yeniden başlayınca boş)
 static bool ayarYeni = true;          // hız/renk/mesaj ekrana yazılmalı
@@ -77,12 +79,21 @@ static void ayarYukle() {
   EEPROM.get(48, k);
   EEPROM.end();
   if (k.magic == AYAR_MAGIC && k.hiz >= 1 && k.hiz <= 10) { kaymaHiz = k.hiz; yaziRenk = k.renk; animMod = k.pad <= 3 ? k.pad : 0; }
+  uint8_t ek[4];
+  EEPROM.begin(64);
+  for (uint8_t i = 0; i < 4; i++) ek[i] = EEPROM.read(56 + i);
+  EEPROM.end();
+  if (ek[0] == 0xA5 && ek[1] <= 1) { arkaMod = ek[1]; arkaRenk = ek[2] | (ek[3] << 8); }
 }
 
 static void ayarKaydet() {
   AyarKayit k = {AYAR_MAGIC, kaymaHiz, animMod, yaziRenk};
   EEPROM.begin(64);
   EEPROM.put(48, k);
+  EEPROM.write(56, 0xA5);
+  EEPROM.write(57, arkaMod);
+  EEPROM.write(58, arkaRenk & 0xFF);
+  EEPROM.write(59, arkaRenk >> 8);
   EEPROM.commit();
   EEPROM.end();
 }

@@ -148,6 +148,15 @@ static void saatYaz() {
 
 // Ekrandaki göstergeleri yazar: b_led (WiFi), t_durum (IP+sürüm), t_baslik (saat), n0 (sıcaklık), g0 (haber).
 // g0 yalnız haber değişince ya da zorlanınca yazılır (her yazışta kayma başa döner).
+// Ekrandan sayısal değer okur ("get ..." -> 71 b0 b1 b2 b3); olmazsa false.
+static bool nxOku(const String& c, int32_t& v) {
+  String r = nxExchange(c, 60);
+  unsigned b[4];
+  if (!r.startsWith("71 ") || sscanf(r.c_str() + 3, "%x %x %x %x", &b[0], &b[1], &b[2], &b[3]) != 4) return false;
+  v = b[0] | (b[1] << 8) | (b[2] << 16) | ((uint32_t)b[3] << 24);
+  return true;
+}
+
 static void wifiGoster() {
   bool d = WiFi.status() == WL_CONNECTED;
   bool zorla = ledSon == -1;
@@ -167,6 +176,9 @@ static void wifiGoster() {
     k(nxCmd("g1.tim=" + String(KAYMA_TIM)));
     k(nxCmd("g1.dis=" + String(kaymaHiz * 2)));
     k(nxCmd("g1.pco=" + String(yaziRenk)));
+    int32_t arka = arkaRenk;
+    if (arkaMod == 1 && !nxOku("get page0.bco", arka)) arka = arkaRenk;  // sayfa rengi okunamazsa seçili renk
+    k(nxCmd("g1.bco=" + String(arka)));
     if (mesaj.length()) k(nxCmd("g1.txt=\"" + mesaj + "\""));
     ayarYeni = false;
   }
@@ -188,7 +200,7 @@ static void apiDurum() {
              ",\"saat\":\"" + (saatHazir() ? saatStr() : String("-")) + "\",\"sehir\":\"" + jesc(sehirAd) +
              "\",\"hava\":\"" + (havaVar ? String(havaC, 1) : String("-")) + "\",\"havad\":\"" + jesc(havaDurum) +
              "\",\"haber\":\"" + jesc(haberMetin.substring(0, 90)) + "\",\"haberd\":\"" + jesc(haberDurum) +
-             "\",\"anim\":" + animMod + ",\"hiz\":" + kaymaHiz + ",\"renk\":" + yaziRenk + ",\"mesaj\":\"" + jesc(mesaj) + "\",\"heap\":" + ESP.getFreeHeap() + "}";
+             "\",\"arka\":" + arkaRenk + ",\"arkam\":" + arkaMod + ",\"anim\":" + animMod + ",\"hiz\":" + kaymaHiz + ",\"renk\":" + yaziRenk + ",\"mesaj\":\"" + jesc(mesaj) + "\",\"heap\":" + ESP.getFreeHeap() + "}";
   web.send(200, "application/json", j);
 }
 
@@ -223,72 +235,6 @@ body{margin:0;font-family:system-ui,sans-serif;color:var(--text)}
 .etiket{display:inline-block;width:110px;color:var(--muted)}#nx{font-family:Consolas,monospace}
 )CSS";
 
-
-// ---- /foto: tarayıcıdan gelen "fill" komut satırlarını ekrana iletir ----
-// Akış denetimi: bkcmd=1 ile ekran her başarılı komuta 0x01 yollar; en fazla FOTO_WINDOW komut onaysız bekler.
-constexpr uint32_t FOTO_BAUD = 115200;
-constexpr uint16_t FOTO_WINDOW = 24;
-static char fotoLine[80];
-static uint8_t fotoLen = 0;
-static uint32_t fotoSent = 0, fotoAcked = 0;
-static bool fotoOk = false;
-
-static void nxEnd() { Serial.write(0xFF); Serial.write(0xFF); Serial.write(0xFF); }
-
-static bool fotoDrain(uint32_t maxInFlight, uint32_t ms) {
-  uint32_t t = millis();
-  for (;;) {
-    while (Serial.available())
-      if (Serial.read() == 0x01) fotoAcked++;
-    if (fotoSent - fotoAcked <= maxInFlight) return true;
-    if (millis() - t > ms) return false;
-    yield();
-  }
-}
-
-static void fotoSendLine() {
-  if (!fotoLen) return;
-  if (!fotoDrain(FOTO_WINDOW, 2000)) { fotoOk = false; return; }
-  Serial.write((const uint8_t*)fotoLine, fotoLen);
-  nxEnd();
-  fotoSent++;
-  fotoLen = 0;
-}
-
-void handleFotoUpload() {
-  HTTPUpload& u = web.upload();
-  if (u.status == UPLOAD_FILE_START) {
-    fotoOk = true; fotoLen = 0; fotoSent = fotoAcked = 0;
-    Serial.print("bkcmd=1"); nxEnd();
-    Serial.printf("bauds=%u", FOTO_BAUD); nxEnd();
-    Serial.flush();
-    delay(100);
-    Serial.begin(FOTO_BAUD);
-    delay(50);
-    while (Serial.available()) Serial.read();
-  } else if (u.status == UPLOAD_FILE_WRITE && fotoOk) {
-    for (size_t i = 0; i < u.currentSize && fotoOk; i++) {
-      char ch = (char)u.buf[i];
-      if (ch == '\n') fotoSendLine();
-      else if (fotoLen < sizeof fotoLine - 1) fotoLine[fotoLen++] = ch;
-      else fotoOk = false;  // beklenmedik uzun satır
-    }
-  } else if (u.status == UPLOAD_FILE_END || u.status == UPLOAD_FILE_ABORTED) {
-    if (u.status == UPLOAD_FILE_ABORTED) fotoOk = false;
-    if (fotoOk) fotoSendLine();
-    fotoOk = fotoOk && fotoDrain(0, 5000) && u.status == UPLOAD_FILE_END;
-    Serial.print("bkcmd=2"); nxEnd();
-    Serial.print("bauds=9600"); nxEnd();
-    Serial.flush();
-    delay(100);
-    Serial.begin(NX_BAUD);
-  }
-}
-
-void handleFotoDone() {
-  web.send(fotoOk ? 200 : 500, "text/plain",
-           fotoOk ? String("tamam: ") + fotoSent + " komut" : String("HATA: ") + fotoAcked + "/" + fotoSent + " komut onaylandi (ESP-01 ve ekranin gucunu kes-ver)");
-}
 
 void handleProbe() {
   static const uint32_t bauds[] = {9600, 115200, 19200, 38400, 57600, 4800, 2400, 31250, 230400};
@@ -333,6 +279,11 @@ void setup() {
     if (web.hasArg("r")) { yaziRenk = web.arg("r").toInt(); ayarKaydet(); }
     if (web.hasArg("t")) { mesaj = asciiMetin(web.arg("t")).substring(0, 100); }
     ayarYeni = true;
+    apiDurum();
+  });
+  web.on("/api/arka", [] {  // g1 arka planı: r = RGB565 renk, ya da s=1 -> sayfa rengi
+    if (web.hasArg("r")) { arkaRenk = web.arg("r").toInt(); arkaMod = 0; ayarKaydet(); ayarYeni = true; }
+    else if (web.arg("s") == "1") { arkaMod = 1; ayarKaydet(); ayarYeni = true; }
     apiDurum();
   });
   web.on("/api/anim", [] {  // g1 renk animasyonu: m = 0 sabit, 1 yanıp sönme, 2 gökkuşağı, 3 nefes
@@ -395,8 +346,6 @@ void setup() {
   });
   web.on("/tft", HTTP_GET, [] { web.sendHeader("Location", "/"); web.send(302); });
   web.on("/tft", HTTP_POST, handleTftDone, handleTftUpload);
-  web.on("/foto", HTTP_GET, [] { web.sendHeader("Location", "/"); web.send(302); });
-  web.on("/foto", HTTP_POST, handleFotoDone, handleFotoUpload);
   web.on("/probe", handleProbe);
   web.on("/nx", handleNx);
   web.on("/heap", [] { web.send(200, "text/plain", String(ESP.getFreeHeap())); });
