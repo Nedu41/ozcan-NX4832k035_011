@@ -24,6 +24,7 @@ static float havaC = 0;
 static String havaDurum = "-", haberMetin = "", haberDurum = "-";
 static uint8_t kaymaHiz = 3;          // 1..10 (g0/g1.dis = hız*2 px); web'den ayarlanır, EEPROM'da kalıcı
 static uint16_t yaziRenk = 57052;     // g1 yazı rengi RGB565 (#DADAE4); web paletinden
+static uint8_t animMod = 0;           // g1 renk animasyonu: 0 sabit, 1 yanıp sönme, 2 gökkuşağı, 3 nefes
 static String mesaj = "";             // g1 metni (RAM; yeniden başlayınca boş)
 static bool ayarYeni = true;          // hız/renk/mesaj ekrana yazılmalı
 static bool haberYeni = false;
@@ -75,15 +76,39 @@ static void ayarYukle() {
   EEPROM.begin(64);
   EEPROM.get(48, k);
   EEPROM.end();
-  if (k.magic == AYAR_MAGIC && k.hiz >= 1 && k.hiz <= 10) { kaymaHiz = k.hiz; yaziRenk = k.renk; }
+  if (k.magic == AYAR_MAGIC && k.hiz >= 1 && k.hiz <= 10) { kaymaHiz = k.hiz; yaziRenk = k.renk; animMod = k.pad <= 3 ? k.pad : 0; }
 }
 
 static void ayarKaydet() {
-  AyarKayit k = {AYAR_MAGIC, kaymaHiz, 0, yaziRenk};
+  AyarKayit k = {AYAR_MAGIC, kaymaHiz, animMod, yaziRenk};
   EEPROM.begin(64);
   EEPROM.put(48, k);
   EEPROM.commit();
   EEPROM.end();
+}
+
+// RGB565 yardımcıları (renk animasyonu)
+static uint16_t renkOlcek(uint16_t c, uint8_t yuzde) {
+  uint32_t r = ((c >> 11) & 31) * yuzde / 100, g = ((c >> 5) & 63) * yuzde / 100, b = (c & 31) * yuzde / 100;
+  return (r << 11) | (g << 5) | b;
+}
+
+static uint16_t tonRenk(uint16_t h) {  // h: 0..359, tam doygun/parlak
+  uint8_t bolge = h / 60, f = (h % 60) * 255 / 60, q = 255 - f, r, g, b;
+  switch (bolge) { case 0: r = 255; g = f; b = 0; break; case 1: r = q; g = 255; b = 0; break; case 2: r = 0; g = 255; b = f; break;
+                   case 3: r = 0; g = q; b = 255; break; case 4: r = f; g = 0; b = 255; break; default: r = 255; g = 0; b = q; }
+  return ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
+}
+
+// Animasyonun o anki rengi (millis'e göre); sabit modda seçilen renk
+static uint16_t animRenk() {
+  uint32_t t = millis();
+  switch (animMod) {
+    case 1: return (t / 500) % 2 ? 0 : yaziRenk;                                      // yanıp sönme
+    case 2: return tonRenk((t / 25) % 360);                                           // gökkuşağı (~9 sn'de bir tur)
+    case 3: { uint32_t p = (t / 20) % 100; uint8_t y = p < 50 ? 20 + p * 80 / 50 : 20 + (99 - p) * 80 / 50; return renkOlcek(yaziRenk, y); }  // nefes
+    default: return yaziRenk;
+  }
 }
 
 static void veriBaslat() {

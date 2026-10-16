@@ -188,7 +188,7 @@ static void apiDurum() {
              ",\"saat\":\"" + (saatHazir() ? saatStr() : String("-")) + "\",\"sehir\":\"" + jesc(sehirAd) +
              "\",\"hava\":\"" + (havaVar ? String(havaC, 1) : String("-")) + "\",\"havad\":\"" + jesc(havaDurum) +
              "\",\"haber\":\"" + jesc(haberMetin.substring(0, 90)) + "\",\"haberd\":\"" + jesc(haberDurum) +
-             "\",\"hiz\":" + kaymaHiz + ",\"renk\":" + yaziRenk + ",\"mesaj\":\"" + jesc(mesaj) + "\",\"heap\":" + ESP.getFreeHeap() + "}";
+             "\",\"anim\":" + animMod + ",\"hiz\":" + kaymaHiz + ",\"renk\":" + yaziRenk + ",\"mesaj\":\"" + jesc(mesaj) + "\",\"heap\":" + ESP.getFreeHeap() + "}";
   web.send(200, "application/json", j);
 }
 
@@ -335,6 +335,11 @@ void setup() {
     ayarYeni = true;
     apiDurum();
   });
+  web.on("/api/anim", [] {  // g1 renk animasyonu: m = 0 sabit, 1 yanıp sönme, 2 gökkuşağı, 3 nefes
+    int m = web.arg("m").toInt();
+    if (m >= 0 && m <= 3) { animMod = m; ayarKaydet(); ayarYeni = true; }  // ayarYeni: sabit renk geri yazılır
+    apiDurum();
+  });
   web.on("/api/hiz", [] {  // kayma hızı 1..10 (g0 ve g1)
     int v = web.arg("v").toInt();
     if (v >= 1 && v <= 10) { kaymaHiz = v; ayarKaydet(); ayarYeni = true; haberDegisAt = 0; }
@@ -406,6 +411,11 @@ void loop() {
   ArduinoOTA.handle();
   web.handleClient();
   bool d = WiFi.status() == WL_CONNECTED;
+  static uint32_t animAt = 0;
+  if (animMod && mesaj.length() && millis() >= animAt) {  // renk animasyonu: saniyede ~5-7 komut
+    animAt = millis() + (animMod == 1 ? 500 : 150);
+    nxCmd("g1.pco=" + String(animRenk()));
+  }
   if (haberN > 1 && millis() >= haberDegisAt) haberSonraki();  // kayma bitti: sıradaki başlık(lar)
   if (apAcik) {
     dns.processNextRequest();

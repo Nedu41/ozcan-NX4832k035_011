@@ -6,6 +6,7 @@ static const char ANA_HTML[] PROGMEM = R"HTML(<!doctype html><meta charset=utf-8
 <meta name=viewport content="width=device-width,initial-scale=1"><title>NX Hub</title>
 <link rel=stylesheet href=/pano.css>
 <style>
+.pg{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px}.pg small{width:52px;color:#9ca3af}
 .sw{width:34px;height:34px;border-radius:8px;border:2px solid #000;cursor:pointer;padding:0}
 .sw.on{outline:2px solid #e5e7eb;outline-offset:2px}
 main{max-width:560px;margin:16px auto;padding:0 16px}
@@ -23,7 +24,8 @@ canvas{width:100%;background:#000;border:2px solid #000;margin:12px 0;image-rend
 <main>
 <div class=card id=c_ekran><h3>Ekran</h3>
 <div class=satir style="margin-top:12px"><input id=dt maxlength=100 placeholder="kayar yazi (g1, en cok 100 karakter)" style="flex:1;padding:10px;border-radius:8px;font-size:15px"><button class="btn btn-mavi" onclick="yaz()">Gonder</button></div>
-<div id=pal class=satir style="margin-top:10px"></div>
+<div id=pal style="margin-top:10px"></div>
+<div class=satir style="margin-top:10px"><span class=etiket>Animasyon</span><select id=an style="flex:1;padding:10px"><option value=0>Sabit<option value=1>Yanip sonen<option value=2>Gokkusagi<option value=3>Nefes</select></div>
 <div class=satir style="margin-top:10px"><span class=etiket>Kayma hizi</span><input id=hz type=range min=1 max=10 value=3 style="flex:1"><b id=hzv>3</b></div>
 <div class=satir><input id=sh placeholder="sehir (or. Ankara)" style="flex:1;padding:10px;border-radius:8px;font-size:15px"><button class="btn btn-mavi" onclick="sehir()">Sehir ayarla</button><button class="btn btn-turuncu" onclick="f('/api/yenile')">Yenile</button></div>
 <p style="margin:12px 0 0;line-height:1.7"><span class=etiket>Saat</span><span id=vs>-</span><br><span class=etiket>Sehir</span><span id=vh>-</span><br><span class=etiket>Hava</span><span id=vd>-</span><br><span class=etiket>Haber</span><span id=vn>-</span><br><span class=etiket>Haber durumu</span><span id=vb>-</span><br><span class=etiket>t_durum</span><span id=dm>-</span><br><span class=etiket>Son komut</span><span id=nx>-</span></p></div>
@@ -110,14 +112,18 @@ $('tg').onclick=()=>{
 };
 function g(d){dm.textContent=d.durum;nx.textContent=d.nx;wifi.textContent=d.ssid+' ('+d.ip+')';srm.textContent=d.surum+' • Son güncelleme: '+d.tarih;
 vs.textContent=d.saat;vh.textContent=d.sehir+' '+d.hava+' °C';vd.textContent=d.havad;vn.textContent=d.haber||'-';vb.textContent=d.haberd+' (bellek '+d.heap+')';
-if(document.activeElement!==hz){hz.value=d.hiz;hzv.textContent=d.hiz}renk=d.renk;mark();
+if(document.activeElement!==hz){hz.value=d.hiz;hzv.textContent=d.hiz}renk=d.renk;mark();if(document.activeElement!==an)an.value=d.anim;
 ws.textContent=d.ssid||'-';wi.textContent=d.ip;wr.textContent=d.rssi+' dBm'}
 function f(u){fetch(u).then(r=>r.json()).then(g).catch(()=>nx.textContent='baglanti yok')}
 function sehir(){f('/api/sehir?ad='+encodeURIComponent(sh.value))}
-const RENK=['#DADAE4','#7FE0DC','#FFB27A','#8FE0A0','#FF9A9A','#C9A7FF','#FFE08A','#8FB8FF','#F4A6D7'];
+const GRUP=[['Pastel',['#DADAE4','#7FE0DC','#FFB27A','#8FE0A0','#FF9A9A','#C9A7FF','#FFE08A','#8FB8FF','#F4A6D7']],
+['Ana',['#FFFFFF','#FF0000','#00FF00','#3C64FF','#FFFF00','#FF8000','#00FFFF','#FF00FF']],
+['Neon',['#39FF14','#04D9FF','#FF1493','#CCFF00','#FF5F1F','#B026FF','#FF073A','#0FF0B3']]];
 const h565=x=>{const n=parseInt(x.slice(1),16),r=(n>>16)&255,g=(n>>8)&255,b=n&255;return((r>>3)<<11)|((g>>2)<<5)|(b>>3)};
-let renk=h565(RENK[0]);
-RENK.forEach(x=>{const b=document.createElement('button');b.className='sw';b.style.background=x;b.dataset.v=h565(x);b.onclick=()=>{renk=+b.dataset.v;mark();f('/api/mesaj?r='+renk)};pal.appendChild(b)});
+let renk=h565(GRUP[0][1][0]);
+GRUP.forEach(([ad,liste])=>{const r=document.createElement('div');r.className='pg';r.innerHTML='<small>'+ad+'</small>';
+  liste.forEach(x=>{const b=document.createElement('button');b.className='sw';b.style.background=x;b.dataset.v=h565(x);b.onclick=()=>{renk=+b.dataset.v;mark();f('/api/mesaj?r='+renk)};r.appendChild(b)});pal.appendChild(r)});
+an.onchange=()=>f('/api/anim?m='+an.value);
 function mark(){document.querySelectorAll('.sw').forEach(b=>b.classList.toggle('on',+b.dataset.v==renk))}
 hz.oninput=()=>hzv.textContent=hz.value;hz.onchange=()=>f('/api/hiz?v='+hz.value);
 function yaz(){f('/api/mesaj?t='+encodeURIComponent(dt.value)+'&r='+renk)}
