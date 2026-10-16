@@ -10,17 +10,15 @@ Nextion **NX4832K035_011** (3,5" 480x320 seri HMI) ile, `C:\Kodlar\ozcan-crow-pa
 ## Mimari fark (CrowPanel'den)
 Nextion kendi içinde çalışan akıllı ekran: sayfalar/bileşenler **Nextion Editor** (Windows) ile tasarlanıp `.tft` olarak ekrana yüklenir (TF kart ya da seri). WiFi yok → bir **ESP32** UART ile sürer (komut: metin + `FF FF FF`; olaylar aynı biçimde gelir). `.HMI`/`.tft` dosyasını ben üretemem; sayfa/bileşen adlarını `docs/NEXTION_TASARIM.md` belirler, kullanıcı Editor'de kurar (ya da birlikte). ESP32 tarafı (`src/nextion.*`) bileşen adlarına göre yazılır.
 
-## Durum (2026-10-12)
-- Fotoğraftan kart bilgisi çıkarıldı (`docs/DONANIM.md`). Kart henüz PC'ye bağlanmadı.
-- `src/nextion.*`: protokol sürücüsü (belgeden, kartta denenmedi), `src/main.cpp`: olay yazdıran iskelet. `pio run` derleniyor (board `esp32dev` **geçici varsayım**).
-- `araclar/nextion_probe.py`: ekran bağlanınca ilk iş — "connect" ile model/hız doğrulama.
+## Durum (2026-10-16)
+- Ekran teyit edildi: NX4832K035_011R, 9600 baud, 32 MB flash (`docs/DONANIM.md`).
+- Sürücü kart **ESP-01 (ESP8266, 1 MB)** olarak kararlaştırıldı; ekrana çapraz TX/RX ile bağlı. WiFiManager + ArduinoOTA + Nextion sınama arayüzü `src/esp01_test.cpp` içinde çalışıyor (env `esp01`, OTA: `esp01_ota`).
+- `src/nextion.*` ve `src/main.cpp` ESP32 içindi (env `esp32`, askıda); ESP8266'ya uyarlanacak.
 
 ## Sıradaki
-1. Ekranı USB-TTL ile bağla → `python -I araclar/nextion_probe.py COMx` → gerçek model/hız/comok satırını DONANIM.md'ye yaz.
-2. Ekranı hangi ESP32'nin süreceğini belirle (açık soru) → pin/board kesinleşir.
-3. `docs/NEXTION_TASARIM.md` sayfalarını Editor'de kur → `.tft` yükle.
-4. HUB mantığını (WiFi listesi, ESP01 yönetimi, hava, LedPanel, web arayüzü) CrowPanel projesinden taşı; WiFi kurulumu ekranda yapılacak (Nextion'un ekran klavyesi bileşeni ile).
+1. `docs/NEXTION_TASARIM.md` sayfalarını Editor'de kur → `.tft` yükle (TF kart ya da seri).
+2. `nextion.*` sürücüsünü ESP8266'ya uyarla (`Serial.begin(9600)`, UART0).
+3. HUB mantığını (hava, LedPanel, web arayüzü) taşı; ESP-01 RAM'i ~40 KB boş, HTTPS/TLS ölçülerek karar verilecek.
 
 ## Açık sorular (kullanıcıya)
-- Bu ekranı hangi ESP32 sürecek (mevcut hangi kart: ESP32-DevKit, S3, C3, ESP-01 …)? ESP-01'de yalnız 2 GPIO + UART var; ekranla UART'ı paylaşamaz.
 - Ekran yatay mı dikey mi kullanılacak (Nextion'da yön tasarımda sabit; ikisi birden için ayrı sayfalar gerekir)?

@@ -10,8 +10,20 @@ Kaynak: `NX4832k035_011.jpeg` (kartın arka yüzü fotoğrafı, 2026-10-12). Kar
 - TF (microSD) yuvası (K1), CR1220 tipi yedek pil yuvası (RTC için), J4 yazılı boş lehim noktaları
 - Dokunmatik türü: model sonundaki "_011" Nextion'da dirençli panel anlamına gelir (kullanıcı da "R-Rezistif" demişti); fotoğraftan doğrulanamaz
 
+## Ölçülenler (2026-10-16, ESP-01 üzerinden "connect")
+- Seri hızı **9600** (ilk denemede cevap verdi)
+- Cevap: `comok 1,30614-0,NX4832K035_011R,183,61699,DB646C1707181D30,33554432`
+  - Model **NX4832K035_011R** (R = dirençli dokunmatik), dokunmatik var
+  - Firmware sürümü 183, MCU kodu 61699
+  - Seri no `DB646C1707181D30` (etiketle aynı)
+  - Flash 33554432 bayt = 32 MB
+
+## Sürücü kart: ESP-01 (ESP8266EX, 1 MB flash)
+- Çip 25Q80 (GigaDevice, 0xC8/0x4014) = 1 MB; kristal 26 MHz. Yeni modül MAC `fc:f5:c4:a8:0b:ac`
+- Ekran bağlantısı çapraz: ESP-01 TX -> Nextion RX, ESP-01 RX -> Nextion TX, ortak GND. UART0 ekranda; log yok, güncelleme OTA (`pio run -e esp01_ota -t upload`, `nxhub.local`)
+- GPIO0 yalnız flaş modu için GND'ye çekilir; adaptörde RTS yok, flaş/reset elle: `esptool --before no-reset --after no-reset`
+- WiFi: WiFiManager (`NXHub-Kurulum` AP'si), bağlıyken `http://nxhub.local/`; sınama arayüzü `http://nxhub.local:81/probe`, `/nx?c=<komut>`
+
 ## Teyit bekleyen
-- Seri hızı (Nextion varsayılanı 9600) ve gerçek model: `araclar/nextion_probe.py` ("connect" cevabı)
-- İşlemci/flash/RAM (cevaptaki comok satırı verir)
-- Kablonun renk sırası ve hangi USB-TTL/ESP32'ye bağlı olduğu
-- Ekranı sürecek ESP32 kartı (bkz. CLAUDE.md, açık soru)
+- Kablonun renk sırası
+- Ekranın yatay/dikey kullanımı
